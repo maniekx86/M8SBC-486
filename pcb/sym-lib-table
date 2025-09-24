@@ -1,0 +1,5 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "486_Socket")(type "KiCad")(uri "${KIPRJMOD}/Kicad-486-CPU-socket-main/486_Socket.kicad_sym")(options "")(descr ""))
+  (lib (name "sbc486_additional")(type "KiCad")(uri "${KIPRJMOD}/Kicad-486-CPU-socket-main/sbc486_additional.kicad_sym")(options "")(descr ""))
+)
