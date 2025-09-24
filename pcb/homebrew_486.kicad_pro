@@ -137,7 +137,7 @@
         "min_text_thickness": 0.08,
         "min_through_hole_diameter": 0.2,
         "min_track_width": 0.0,
-        "min_via_annular_width": 0.1,
+        "min_via_annular_width": 0.15,
         "min_via_diameter": 0.4,
         "solder_mask_to_copper_clearance": 0.0,
         "use_height_for_length_calcs": true
@@ -228,11 +228,11 @@
           "drill": 0.0
         },
         {
-          "diameter": 0.4,
+          "diameter": 0.5,
           "drill": 0.2
         },
         {
-          "diameter": 0.5,
+          "diameter": 0.6,
           "drill": 0.3
         },
         {
@@ -497,7 +497,7 @@
     "classes": [
       {
         "bus_width": 12,
-        "clearance": 0.2,
+        "clearance": 0.128,
         "diff_pair_gap": 0.25,
         "diff_pair_via_gap": 0.25,
         "diff_pair_width": 0.2,
