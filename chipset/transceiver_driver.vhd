@@ -1,59 +1,57 @@
 ----------------------------------------------------------------------------------
 -- Company: maniek86.xyz
 -- Engineer: Piotr Grzesik
--- 
--- Create Date:    19:41:48 09/20/2025 
--- Design Name: 
--- Module Name:    transceiver_driver - Behavioral 
+--
+-- Create Date:	   19:41:48 09/20/2025
+-- Design Name:
+-- Module Name:	   transceiver_driver - Behavioral
 -- Project Name: Hamster 1 chipset
 -- Target Devices: M8SBC-486 REV 1.0
--- Tool versions: 
+-- Tool versions:
 -- Description: Driver for byte swapping transceivers
 --
--- Dependencies: 
+-- Dependencies:
 --
--- Revision: 
+-- Revision:
 -- Revision 0.01 - File Created
--- Additional Comments: 
+-- Additional Comments:
 --
 ----------------------------------------------------------------------------------
 LIBRARY IEEE;
 USE IEEE.STD_LOGIC_1164.ALL;
 USE IEEE.NUMERIC_STD.ALL;
 
-
 ENTITY transceiver_driver IS
-	port (
-		BE			 		: IN		STD_LOGIC_VECTOR(3 downto 0);
-		BS8				: IN		STD_LOGIC;
-		BS16				: IN		STD_LOGIC;
-		
-		TR_8B				: OUT		STD_LOGIC_VECTOR( 3 downto  0);
-		TR_16B_LOW		: OUT		STD_LOGIC;	
-		TR_16B_HIGH		: OUT		STD_LOGIC
-    );
+	PORT (
+		BE				: IN	STD_LOGIC_VECTOR(3 DOWNTO 0);
+		BS8				: IN	STD_LOGIC;
+		BS16			: IN	STD_LOGIC;
+
+		TR_8B			: OUT	STD_LOGIC_VECTOR(3 DOWNTO 0);
+		TR_16B_LOW		: OUT	STD_LOGIC;
+		TR_16B_HIGH		: OUT	STD_LOGIC
+	);
 END transceiver_driver;
 
 ARCHITECTURE Behavioral OF transceiver_driver IS
 
 BEGIN
 
-   PROCESS (BE, BS8, BS16)
-		VARIABLE bs_comb	: STD_LOGIC_VECTOR(1 downto 0);
+	PROCESS (BE, BS8, BS16)
+		VARIABLE bs_comb	: STD_LOGIC_VECTOR(1 DOWNTO 0);
 	BEGIN
 		bs_comb := BS8 & BS16;
-      CASE bs_comb IS
-         WHEN "01" =>
-            -- BS8 active
-				
+		CASE bs_comb IS
+			WHEN "01" =>
+				-- BS8 active
+
 				TR_8B <= "1111";
 				TR_16B_LOW <= '1';
 				TR_16B_HIGH <= '1';
-				
 
 				IF BE(0) = '0' THEN
 					TR_8B(0) <= '0';
-				ELSE 
+				ELSE
 					IF BE(1) = '0' THEN
 						TR_8B(1) <= '0';
 					ELSE
@@ -65,22 +63,21 @@ BEGIN
 							END IF;
 						END IF;
 					END IF;
-				END IF; 
+				END IF;
 
-					
 			WHEN "10" =>
 				-- BS16 active
-				
+
 				TR_8B <= "1111";
-				TR_16B_LOW <= '1';  -- Higher 8 bits to 8-15
+				TR_16B_LOW <= '1';	-- Higher 8 bits to 8-15
 				TR_16B_HIGH <= '1'; -- Higher 8 bits to 24-31
-				
+
 				IF BE(0) = '0' THEN -- start 0
 					TR_8B(0) <= '0'; -- 8b (0)
 					IF BE(1) = '0' THEN -- 16b if 0-15
 						TR_16B_LOW <= '0';
 					END IF;
-				ELSE 
+				ELSE
 					IF BE(1) = '0' THEN -- start 8
 						TR_16B_LOW <= '0'; -- only 8b possible
 					ELSE
@@ -96,16 +93,12 @@ BEGIN
 						END IF;
 					END IF;
 				END IF;
-				
-            
-         WHEN OTHERS =>
-            TR_8B <= "1111";
+
+			WHEN OTHERS =>
+				TR_8B <= "1111";
 				TR_16B_LOW <= '1';
 				TR_16B_HIGH <= '1';
-      END CASE;  
-		
-		
-   END PROCESS;
-	
-END Behavioral;
+		END CASE;
+	END PROCESS;
 
+END Behavioral;
