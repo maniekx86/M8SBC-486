@@ -34,7 +34,7 @@ ENTITY ram_driver IS
 	PORT (
 		CLK				: IN		STD_LOGIC;
 		RESET			: IN		STD_LOGIC;
-		BE				: IN		STD_LOGIC_VECTOR(3 downto 0);
+		BE				: IN		STD_LOGIC_VECTOR(3 DOWNTO 0);
 		ADS				: IN		STD_LOGIC; -- Active LOW
 		CPU_RW			: IN		STD_LOGIC; -- Inverted in x86! 0 - read, 1 - write
 		RAMCS			: IN		STD_LOGIC; -- Active LOW
@@ -43,11 +43,11 @@ ENTITY ram_driver IS
 		CS0				: OUT		STD_LOGIC;
 		CS1				: OUT		STD_LOGIC;
 		RDY				: OUT		STD_LOGIC;
-		WE				: OUT		STD_LOGIC_VECTOR(3 downto 0); -- For each bytes
-		OE				: OUT		STD_LOGIC_VECTOR(3 downto 0);
+		WE				: OUT		STD_LOGIC_VECTOR(3 DOWNTO 0); -- For each bytes
+		OE				: OUT		STD_LOGIC_VECTOR(3 DOWNTO 0);
 
-		RAM_WAITSTATES			: IN INTEGER RANGE 0 to 127;
-		RAM_BURST_WAITSTATES	: IN INTEGER RANGE 0 to 15
+		RAM_WAITSTATES			: IN INTEGER RANGE 0 TO 127;
+		RAM_BURST_WAITSTATES	: IN INTEGER RANGE 0 TO 15
 
 	);
 END ram_driver;
@@ -64,8 +64,8 @@ ARCHITECTURE Behavioral OF ram_driver IS
 	--SIGNAL	 <output>_i : std_logic;  -- example output signal
 	SIGNAL RDY_I		: STD_LOGIC;
 
-	SIGNAL WS_COUNT		: INTEGER RANGE 0 to 127 := 0;
-	SIGNAL WS_TO_WAIT	: INTEGER RANGE 0 to 127 := 0;
+	SIGNAL WS_COUNT		: INTEGER RANGE 0 TO 127 := 0;
+	SIGNAL WS_TO_WAIT	: INTEGER RANGE 0 TO 127 := 0;
 
 	SIGNAL LAST_CS		: STD_LOGIC := '1';
 	SIGNAL EXTRA_WS		: STD_LOGIC := '0';
@@ -79,8 +79,8 @@ ARCHITECTURE Behavioral OF ram_driver IS
 	SIGNAL KEEP_READ	: STD_LOGIC := '0';
 	SIGNAL d_cs0		: STD_LOGIC;
 	SIGNAL d_cs1		: STD_LOGIC;
-
 BEGIN
+
 	CSDEC: PROCESS(ADDR21)
 	BEGIN
 		IF ADDR21 = '1' THEN
