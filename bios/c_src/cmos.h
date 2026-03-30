@@ -6,9 +6,9 @@
 #include "utils.h"
 
 enum CMOS_SETTINGS {
-    CMOS_QUICK_MEMTEST,
-    CMOS_LBA_ENABLED,
-    CMOS_LOCK_CMOS
+	CMOS_QUICK_MEMTEST,
+	CMOS_LBA_ENABLED,
+	CMOS_LOCK_CMOS
 };
 
 uint8_t cmos_read(); // returns 0 if checksum was invalid
