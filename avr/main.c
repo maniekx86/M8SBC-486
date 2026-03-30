@@ -1,28 +1,28 @@
 /*
-    MIT License
+	MIT License
 
-    Copyright (c) 2025, maniek86 (Piotr Grzesik)
+	Copyright (c) 2025, maniek86 (Piotr Grzesik)
 
-    Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to deal
-    in the Software without restriction, including without limitation the rights
-    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
 
-    The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
 
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
 */
 
-// 
+//
 // FPGA bitstream loader, CMOS storage and reset circuit handler for the M8SBC-486 homebrew computer project
 //
 
@@ -30,7 +30,7 @@
 #define EE_ADDR_CONF 0x10
 #define CMOS_SIZE 32
 
-#define BAUD 57600 
+#define BAUD 57600
 // 115200 can't be achieved with 16 MHz CLK
 
 #include <avr/io.h>
@@ -56,26 +56,28 @@ extern const uint8_t bitstream_end[] PROGMEM;
 #define pgm_get_far_address(var) ((uint32_t)(&(var)))
 #endif
 
-
 #define FPGA_PROG_PORT PORTE
 #define FPGA_PROG_DDR  DDRE
-#define FPGA_PROG_BIT  PE5   // PROG_B, output
+#define FPGA_PROG_BIT  PE5	// PROG_B, output
 
 #define FPGA_INIT_PIN  PINE
-#define FPGA_INIT_BIT  PE6   // INIT_B, input
+#define FPGA_INIT_BIT  PE6	// INIT_B, input
 
 #define FPGA_DONE_PIN  PINE
-#define FPGA_DONE_BIT  PE4   // DONE, input
+#define FPGA_DONE_BIT  PE4	// DONE, input
 
 #define RESET_OUT_PORT PORTF
 #define RESET_OUT_DDR  DDRF
-#define RESET_OUT_BIT  PF0   // RESET_OUT, output, active high
+#define RESET_OUT_BIT  PF0	// RESET_OUT, output, active high
 
 #define FPGA_REQ_PIN   PINF
-#define FPGA_REQ_BIT   PF1   // FPGA_REQ_RESET input, active low
+#define FPGA_REQ_BIT   PF1	// FPGA_REQ_RESET input, active low
 
+#define RESET_BTN_PORT PORTB
 #define RESET_BTN_PIN  PINB
-#define RESET_BTN_BIT  PB4   // RESET_BTN, input, active low
+#define RESET_BTN_DDR  DDRB
+#define RESET_BTN_BIT  PB4	// RESET_BTN, input, active low
+#define RESET_BTN_PRESSED  (!(RESET_BTN_PIN & (1 << RESET_BTN_BIT)))
 
 // SPI pins: PB1 - SCK (CCLK), PB2 - MOSI (DIN)
 #define SPI_DDR  DDRB
@@ -83,389 +85,379 @@ extern const uint8_t bitstream_end[] PROGMEM;
 
 // UART1 debug (PD3 TX1, PD2 RX1)
 static void uart1_init(void) {
-    
-    UBRR1H = UBRRH_VALUE;
-    UBRR1L = UBRRL_VALUE;
-    
-    #if USE_2X
-    UCSR1A |= (1 << U2X1);
-    #else
-    UCSR1A &= ~(1 << U2X1);
-    #endif
 
-    UCSR1B = (1 << TXEN1);
-    UCSR1C = (1 << UCSZ11) | (1 << UCSZ10);
+	UBRR1H = UBRRH_VALUE;
+	UBRR1L = UBRRL_VALUE;
+
+	#if USE_2X
+	UCSR1A |= (1 << U2X1);
+	#else
+	UCSR1A &= ~(1 << U2X1);
+	#endif
+
+	UCSR1B = (1 << TXEN1);
+	UCSR1C = (1 << UCSZ11) | (1 << UCSZ10);
 }
 
 static void uart1_putc(char c) {
-    while (!(UCSR1A & (1<<UDRE1)));
-    UDR1 = (uint8_t)c;
+	while (!(UCSR1A & (1<<UDRE1)));
+	UDR1 = (uint8_t)c;
 }
 
 // SPI init (master, SPI2X: f_osc/2, at 16 MHz = 8MHz SCK)
 static void spi_init_fast(void) {
-    SPI_DDR |= (1<<PB1) | (1<<PB2) | (1<<PB0); // SCK, MOSI, SS as outputs
-    SPI_PORT |= (1<<PB0); // keep SS high (inactive)
-    SPCR = (1<<SPE) | (1<<MSTR); // enable SPI, master, def mode 0
-    SPSR |= (1<<SPI2X); // fosc/2 
+	SPI_DDR |= (1<<PB1) | (1<<PB2) | (1<<PB0); // SCK, MOSI, SS as outputs
+	SPI_PORT |= (1<<PB0); // keep SS high (inactive)
+	SPCR = (1<<SPE) | (1<<MSTR); // enable SPI, master, def mode 0
+	SPSR |= (1<<SPI2X); // fosc/2
 }
 
 static void spi_disable(void) {
-    SPCR &= ~(1<<SPE);
+	SPCR &= ~(1<<SPE);
 }
 
 // SPI send
 static inline void spi_write_byte(uint8_t b) {
-    SPDR = b;
-    while (!(SPSR & (1<<SPIF)));
+	SPDR = b;
+	while (!(SPSR & (1<<SPIF)));
 }
 
 // Catch reset requests: FPGA reset (PF1 low) or button (PB4 low)
 static uint8_t reset_requested(void) {
-    if (!(PINF & (1<<FPGA_REQ_BIT))) return 1;
-    if (!(PINB & (1<<RESET_BTN_BIT))) return 1;
-    return 0;
+	if (!(PINF & (1<<FPGA_REQ_BIT))) return 1;
+	if (RESET_BTN_PRESSED) return 1;
+	return 0;
 }
 
-
 static uint32_t bitstream_length(void) {
-    return pgm_get_far_address(bitstream_end) - pgm_get_far_address(bitstream);
+	return pgm_get_far_address(bitstream_end) - pgm_get_far_address(bitstream);
 }
 
 static void uart1_puthex_nibble(uint8_t nib) {
-    nib &= 0xF;
-    if (nib < 10)
-        uart1_putc('0' + nib);
-    else
-        uart1_putc('A' + (nib - 10));
+	nib &= 0xF;
+	if (nib < 10)
+		uart1_putc('0' + nib);
+	else
+		uart1_putc('A' + (nib - 10));
 }
 
 static void uart1_puthex8(uint8_t val) {
-    uart1_puthex_nibble((val >> 4) & 0xF);
-    uart1_puthex_nibble(val & 0xF);
+	uart1_puthex_nibble((val >> 4) & 0xF);
+	uart1_puthex_nibble(val & 0xF);
 }
 
 static void uart1_puthex32(uint32_t val) {
-    for (int i = 28; i >= 0; i -= 4) {
-        uart1_puthex_nibble((val >> i) & 0xF);
-    }
+	for (int i = 28; i >= 0; i -= 4) {
+		uart1_puthex_nibble((val >> i) & 0xF);
+	}
 }
 
 static void uart1_puts(const char *str) {
-    while (*str != '\0') {
-        uart1_putc(*str);
-        str++;
-    }
+	while (*str != '\0') {
+		uart1_putc(*str);
+		str++;
+	}
 }
-
 
 // Load bitstream from flash into FPGA
 int load_fpga_from_flash(void) {
-    uart1_puts("Bitstream load:\r\n");
-    uint32_t start_addr = pgm_get_far_address(bitstream);
-    uint32_t len = bitstream_length();
+	uart1_puts("Bitstream load:\r\n");
+	uint32_t start_addr = pgm_get_far_address(bitstream);
+	uint32_t len = bitstream_length();
 
-    spi_init_fast();
+	spi_init_fast();
 
-    FPGA_PROG_DDR |= (1<<FPGA_PROG_BIT); // PROG_B output
-    
-    // Pulse PROG_B
-    FPGA_PROG_PORT &= ~(1<<FPGA_PROG_BIT); // low
-    _delay_us(1000);
-    FPGA_PROG_PORT |= (1<<FPGA_PROG_BIT);  // high
-    _delay_us(5000);
+	FPGA_PROG_DDR |= (1<<FPGA_PROG_BIT); // PROG_B output
 
-    // wait for INIT_B to go high with simple timeout
-    unsigned long timeout = 1000000UL;
-    while (!(FPGA_INIT_PIN & (1<<FPGA_INIT_BIT))) {
-        if (!--timeout) { 
-            uart1_puts("Timeout waiting for the FPGA\r\n");
-            return -1; 
-        }
-    }
+	// Pulse PROG_B
+	FPGA_PROG_PORT &= ~(1<<FPGA_PROG_BIT); // low
+	_delay_us(1000);
+	FPGA_PROG_PORT |= (1<<FPGA_PROG_BIT);  // high
+	_delay_us(5000);
 
-   
-    // Send bitstream + print checksum 
-     
-    uint32_t checksum = 0;
-    
-    for (uint32_t i = 0; i < len; i++) {
-        uint8_t b = pgm_read_byte_far(start_addr + i);
-        checksum += b;
-        spi_write_byte(b);
-    }
-    
-    uart1_puts("Bitstream checksum: ");
-    uart1_puthex32(checksum);
-    uart1_putc('\r');
-    uart1_putc('\n');
-    _delay_us(5000);
+	// wait for INIT_B to go high with simple timeout
+	unsigned long timeout = 1000000UL;
+	while (!(FPGA_INIT_PIN & (1<<FPGA_INIT_BIT))) {
+		if (!--timeout) {
+			uart1_puts("Timeout waiting for the FPGA\r\n");
+			return -1;
+		}
+	}
 
-    // Check done
-    if (FPGA_DONE_PIN & (1<<FPGA_DONE_BIT)) { // high
-        uart1_puts("Load ok\r\n\r\n");
-        return 0;
-    } else { // low
-        uart1_puts("Load FAIL!\r\n\r\n");
-        return -2;
-    }
+	// Send bitstream + print checksum
+
+	uint32_t checksum = 0;
+
+	for (uint32_t i = 0; i < len; i++) {
+		uint8_t b = pgm_read_byte_far(start_addr + i);
+		checksum += b;
+		spi_write_byte(b);
+	}
+
+	uart1_puts("Bitstream checksum: ");
+	uart1_puthex32(checksum);
+	uart1_putc('\r');
+	uart1_putc('\n');
+	_delay_us(5000);
+
+	// Check done
+	if (FPGA_DONE_PIN & (1<<FPGA_DONE_BIT)) { // high
+		uart1_puts("Load ok\r\n\r\n");
+		return 0;
+	} else { // low
+		uart1_puts("Load FAIL!\r\n\r\n");
+		return -2;
+	}
 }
 
 void cmos_eeprom_read(void) {
-    uint32_t ee_expected_checksum;
-    uint32_t ee_checksum = 0;
-    uint8_t force_reset_cmos = 0;
+	uint32_t ee_expected_checksum;
+	uint32_t ee_checksum = 0;
+	uint8_t force_reset_cmos = 0;
 
-    uart1_puts("EEPROM (CMOS) check:\r\n");
+	uart1_puts("EEPROM (CMOS) check:\r\n");
 
-    // PC7 is CMOS reset, zero is active
-    if((PINC & (1 << PC7)) == 0) {
-        force_reset_cmos = 1;
-        uart1_puts("CMOS RESET active!\r\n");
-    }
+	// PC7 is CMOS reset, zero is active
+	if((PINC & (1 << PC7)) == 0) {
+		force_reset_cmos = 1;
+		uart1_puts("CMOS RESET active!\r\n");
+	}
 
-    ee_expected_checksum = eeprom_read_dword(EE_DWORD_PTR(EE_ADDR_CHKSUM));
-    
-    
-    for(int i=0; i<CMOS_SIZE; i++) {
-        cmos[i] = eeprom_read_byte(EE_PTR(EE_ADDR_CONF + i));
-        ee_checksum += cmos[i];
-    }
-    
-    uart1_puts("Checksum: ");
-    uart1_puthex32(ee_checksum);
-    uart1_puts("\r\nExpected: ");
-    uart1_puthex32(ee_expected_checksum);
-    
-    
-    if((ee_expected_checksum != ee_checksum) || force_reset_cmos) {
-        uart1_puts("\r\nchecksum bad! Clearing...");
-        for(int i=0; i<CMOS_SIZE; i++) {
-            eeprom_update_byte(EE_PTR(EE_ADDR_CONF + i), 0);
-            cmos[i] = 0;
-        }
-        eeprom_write_dword(EE_DWORD_PTR(EE_ADDR_CHKSUM), 0);
-    } 
-    
-    uart1_puts(" OK\r\nEEPROM (CMOS) read done\r\n\r\n");
+	ee_expected_checksum = eeprom_read_dword(EE_DWORD_PTR(EE_ADDR_CHKSUM));
+
+
+	for(int i=0; i<CMOS_SIZE; i++) {
+		cmos[i] = eeprom_read_byte(EE_PTR(EE_ADDR_CONF + i));
+		ee_checksum += cmos[i];
+	}
+
+	uart1_puts("Checksum: ");
+	uart1_puthex32(ee_checksum);
+	uart1_puts("\r\nExpected: ");
+	uart1_puthex32(ee_expected_checksum);
+
+
+	if((ee_expected_checksum != ee_checksum) || force_reset_cmos) {
+		uart1_puts("\r\nchecksum bad! Clearing...");
+		for(int i=0; i<CMOS_SIZE; i++) {
+			eeprom_update_byte(EE_PTR(EE_ADDR_CONF + i), 0);
+			cmos[i] = 0;
+		}
+		eeprom_write_dword(EE_DWORD_PTR(EE_ADDR_CHKSUM), 0);
+	}
+
+	uart1_puts(" OK\r\nEEPROM (CMOS) read done\r\n\r\n");
 }
 
 void cmos_set_transmit(void) {
-    // FPGA DIN becomes CLK (AVR out FPGA in) - PB2 out
-    // FPGA INIT becomes DATA - PE6 out
-    DDRB |= (1<<PB2); // CLK out
-    DDRE |= (1<<PE6); // DATA out
-    
-    PORTB &= ~(1<<PB2); // CLK low
-    PORTE &= ~(1<<PE6); // DATA low
+	// FPGA DIN becomes CLK (AVR out FPGA in) - PB2 out
+	// FPGA INIT becomes DATA - PE6 out
+	DDRB |= (1<<PB2); // CLK out
+	DDRE |= (1<<PE6); // DATA out
+
+	PORTB &= ~(1<<PB2); // CLK low
+	PORTE &= ~(1<<PE6); // DATA low
 }
 
 void cmos_set_receive(void) {
-    DDRB |= (1<<PB2); // CLK out
-    DDRE &= ~(1<<PE6); // DATA in
+	DDRB |= (1<<PB2); // CLK out
+	DDRE &= ~(1<<PE6); // DATA in
 
-    PORTB &= ~(1<<PB2); // CLK low
-    PORTE |= (1<<PE6); // DATA pull-up
+	PORTB &= ~(1<<PB2); // CLK low
+	PORTE |= (1<<PE6); // DATA pull-up
 }
 
 void cmos_transmit(void) {
-    // Send 0xF5 + 32 bytes of CMOS data via custom 2 wire communication protocol to the FPGA
-    // After init, CMOS receiver in the FPGA is listening
-    // Clock few times before to make sure FPGA is ready
-    uart1_puts("CMOS restore: ");
-    for(int i=0; i<32;i++) {
-        PORTB |= (1<<PB2);
-        _delay_us(1);
-        PORTB &= ~(1<<PB2);
-    }
+	// Send 0xF5 + 32 bytes of CMOS data via custom 2 wire communication protocol to the FPGA
+	// After init, CMOS receiver in the FPGA is listening
+	// Clock few times before to make sure FPGA is ready
+	uart1_puts("CMOS restore: ");
+	for(int i=0; i<32;i++) {
+		PORTB |= (1<<PB2);
+		_delay_us(1);
+		PORTB &= ~(1<<PB2);
+	}
 
-    for(int i=0; i<(CMOS_SIZE+1); i++) {
-        uint8_t transmit_data;
+	for(int i=0; i<(CMOS_SIZE+1); i++) {
+		uint8_t transmit_data;
 
-        if(i == 0) {
-            transmit_data = 0xF5;
-        } else {
-            transmit_data = cmos[i-1];
-        }
-        
-        for(int b=7; b>=0; b--) {
-            
-            PORTB &= ~(1<<PB2);
-            _delay_us(1);
-            
-            if((transmit_data>>b) & 1) {
-                PORTE |= (1<<PE6);
-            } else {
-                PORTE &= ~(1<<PE6);
-            }
-            
-            PORTB |= (1<<PB2);
+		if(i == 0) {
+			transmit_data = 0xF5;
+		} else {
+			transmit_data = cmos[i-1];
+		}
 
-            _delay_us(1);
-        }
-        
-    }
+		for(int b=7; b>=0; b--) {
 
-    PORTE &= ~(1<<PE6);
-    uart1_puts("done\r\n");
+			PORTB &= ~(1<<PB2);
+			_delay_us(1);
+
+			if((transmit_data>>b) & 1) {
+				PORTE |= (1<<PE6);
+			} else {
+				PORTE &= ~(1<<PE6);
+			}
+
+			PORTB |= (1<<PB2);
+
+			_delay_us(1);
+		}
+
+	}
+
+	PORTE &= ~(1<<PE6);
+	uart1_puts("done\r\n");
 }
 
 void timer1_start(uint16_t value) {
-    // Reset control registers
-    TCCR1A = 0;
-    TCCR1B = 0;
+	// Reset control registers
+	TCCR1A = 0;
+	TCCR1B = 0;
 
-    OCR1A = value;
-    TCNT1 = 0;
+	OCR1A = value;
+	TCNT1 = 0;
 
-    // Clear Job Done flag
-    TIFR |= (1 << OCF1A);
-    // Clear Timer on Compare Match and set prescaler to 256
-    TCCR1B |= (1 << WGM12) | (1 < CS12);
+	// Clear Job Done flag
+	TIFR |= (1 << OCF1A);
+	// Clear Timer on Compare Match and set prescaler to 256
+	TCCR1B |= (1 << WGM12) | (1 < CS12);
 }
 uint8_t timer1_is_done(void) {
-    // Check is timer1 done
-    if(TIFR & (1 << OCF1A)) return 1;
-    return 0;
+	// Check is timer1 done
+	if(TIFR & (1 << OCF1A)) return 1;
+	return 0;
 }
 
 
 int main(void) {
-    uint8_t cmos_receiver_data = 0;
-    uint8_t cmos_rec_bit = 0;
-    uint8_t cmos_rec_addr = 0;
-    uint8_t cmos_rec_started = 0;
-    
-   
-    DDRF &= ~(1<<FPGA_REQ_BIT);
-    PORTF |= (1<<FPGA_REQ_BIT);
-    DDRB &= ~(1<<RESET_BTN_BIT);
-    PORTB |= (1<<RESET_BTN_BIT);
-    DDRE &= ~((1<<PE4)|(1<<PE6));     // INIT and DONE inputs
-    RESET_OUT_DDR |= (1<<RESET_OUT_BIT);    // Reset out
+	uint8_t cmos_receiver_data = 0;
+	uint8_t cmos_rec_bit = 0;
+	uint8_t cmos_rec_addr = 0;
+	uint8_t cmos_rec_started = 0;
 
+	DDRF &= ~(1<<FPGA_REQ_BIT);
+	PORTF |= (1<<FPGA_REQ_BIT);
+	RESET_BTN_DDR &= ~(1<<RESET_BTN_BIT); // RESET_BTN input
+	RESET_BTN_PORT |= (1<<RESET_BTN_BIT); // RESET_BTN pull-up
+	FPGA_PROG_DDR &= ~((1<<FPGA_DONE_BIT)|(1<<FPGA_INIT_BIT)); // INIT and DONE inputs
+	RESET_OUT_DDR |= (1<<RESET_OUT_BIT); // Reset out
 
-    // Configuration jumpers (SPARE header)
-    // PC2 (1) - PC7 (6)
-    // 6: GND (logic zero)
-    // 5: CMOS RESET (pull_up, low active)
-    // 4: Empty
-    // 3: Empty
-    // 2: Empty
-    // 1: Empty
+	// Configuration jumpers (SPARE header)
+	// PC2 (1) - PC7 (6)
+	// 6: GND (logic zero)
+	// 5: CMOS RESET (pull_up, low active)
+	// 4: Empty
+	// 3: Empty
+	// 2: Empty
+	// 1: Empty
 
-    // PC7 (6): CMOS reset, input, pull-up
-    DDRC &= ~(1<<PC7);
-    PORTC |= (1<<PC7);
+	// PC7 (6): CMOS reset, input, pull-up
+	DDRC &= ~(1<<PC7);
+	PORTC |= (1<<PC7);
 
-    // PC6 (5): Logic zero
-    DDRC |= (1<<PC6);
-    PORTC &= ~(1<<PC6);
+	// PC6 (5): Logic zero
+	DDRC |= (1<<PC6);
+	PORTC &= ~(1<<PC6);
 
-    
-    RESET_OUT_PORT |= (1<<RESET_OUT_BIT); // RESET ON
+	RESET_OUT_PORT |= (1<<RESET_OUT_BIT); // RESET ON
 
-    uart1_init();
-    uart1_puts("Start\r\nM8SBC-486 (HW 1.0X) syscon\r\nBuild date: " __DATE__ " " __TIME__ "\r\n\r\n"); // start
-    
-    // Check EEPROM
-    cmos_eeprom_read();
+	uart1_init();
+	uart1_puts("Start\r\nM8SBC-486 (HW 1.0X) syscon\r\nBuild date: " __DATE__ " " __TIME__ "\r\n\r\n"); // start
 
-    // Load bitstream into FPGA
-    if (load_fpga_from_flash() != 0) {
-        // Fail, hold reset
-        RESET_OUT_PORT |= (1<<RESET_OUT_BIT);
-        // There's no point in continuing
-        uart1_puts("FREEZE!");
-        while(1) {
-            
-        }
-    }
-    
-    // Transmit CMOS data to the FPGA
-    spi_disable();
-    cmos_set_transmit();
-    cmos_transmit();
+	// Check EEPROM
+	cmos_eeprom_read();
 
-    cmos_set_receive(); 
-    
-    // Reset time is 500 ms
-    // (16000000 / 256) * 0.5s = 31250 (-1)
-    
-    timer1_start(31249); // Hold reset for initial 500 ms
+	// Load bitstream into FPGA
+	if (load_fpga_from_flash() != 0) {
+		// Fail, hold reset
+		RESET_OUT_PORT |= (1<<RESET_OUT_BIT);
+		// There's no point in continuing
+		uart1_puts("FREEZE!");
+		while(1) {
 
-    uart1_puts("\r\nINIT DONE\r\n\r\n");
+		}
+	}
 
-    while(1) {
+	// Transmit CMOS data to the FPGA
+	spi_disable();
+	cmos_set_transmit();
+	cmos_transmit();
 
-        if (reset_requested()) {
-            timer1_start(62499); // 1000ms after button press
-        }
-        if(!timer1_is_done()) {
-            RESET_OUT_PORT |= (1<<RESET_OUT_BIT); // if timer is counting, hold reset
-        } else {
-            RESET_OUT_PORT &= ~(1<<RESET_OUT_BIT); // release if done
-        }
+	cmos_set_receive();
 
-        // CMOS clock idle
-        _delay_us(1);
-        PORTB |= (1<<PB2);
-        _delay_us(1);
-        // Constantly shift data into temp shift register
-        cmos_receiver_data = (cmos_receiver_data << 1) | ((PINE & (1 << PE6)) ? 1 : 0);
-        PORTB &= ~(1<<PB2);
-    
-        if(!cmos_rec_started) {
-            if(cmos_receiver_data==0xF5) { // Received START
-                uart1_puts("CMOS data in detected: ");
-                cmos_rec_addr = 0;
-                cmos_rec_bit = 0;
-                cmos_rec_started = 1;
-            }
-        } else {
-            // Receive loop
-            cmos_rec_bit++;
-            if(cmos_rec_bit>7) {
-                cmos_rec_bit = 0;
-                if(cmos_rec_addr<CMOS_SIZE) cmos_temp[cmos_rec_addr] = cmos_receiver_data;
-                
-                if(cmos_rec_addr>=CMOS_SIZE) { // 34th byte
-                    if(cmos_receiver_data==0xAA) { // Receive OK!
-                        uint32_t checksum = 0;
-                        
-                        uart1_puts("Receive OK.\r\nWriting to EEPROM ");
-                        for(int i=0; i<CMOS_SIZE; i++) {
-                            eeprom_update_byte(EE_PTR(EE_ADDR_CONF + i), cmos_temp[i]);
-                            checksum += cmos_temp[i];
-                        }
-                        eeprom_write_dword(EE_DWORD_PTR(EE_ADDR_CHKSUM), checksum);
+	// Reset time is 500 ms
+	// (16000000 / 256) * 0.5s = 31250 (-1)
 
-                        uart1_puts("OK\r\n");
+	timer1_start(31249); // Hold reset for initial 500 ms
 
-                        // Debug dump
-                        uart1_puts("Debug dump:\r\n");
-                        for(int i=0; i<CMOS_SIZE; i++) {
-                            uart1_puthex8(cmos_temp[i]);
-                            uart1_putc(' ');
-                            if(i%16==15) uart1_puts("\r\n");
-                        }
-                        uart1_puts("\r\n");
+	uart1_puts("\r\nINIT DONE\r\n\r\n");
 
-                    } else { // Receive bad
-                        uart1_puts(" Interrupted\r\n\r\n");
-                    }
-                    cmos_rec_started = 0;
-                } 
+	while(1) {
 
-                cmos_rec_addr++;
-                
-            } // end of cmos_rec_bit>7
-        }
+		if (reset_requested()) {
+			timer1_start(62499); // 1000ms after button press
+		}
+		if(!timer1_is_done()) {
+			RESET_OUT_PORT |= (1<<RESET_OUT_BIT); // if timer is counting, hold reset
+		} else {
+			RESET_OUT_PORT &= ~(1<<RESET_OUT_BIT); // release if done
+		}
 
+		// CMOS clock idle
+		_delay_us(1);
+		PORTB |= (1<<PB2);
+		_delay_us(1);
+		// Constantly shift data into temp shift register
+		cmos_receiver_data = (cmos_receiver_data << 1) | ((PINE & (1 << PE6)) ? 1 : 0);
+		PORTB &= ~(1<<PB2);
 
+		if(!cmos_rec_started) {
+			if(cmos_receiver_data==0xF5) { // Received START
+				uart1_puts("CMOS data in detected: ");
+				cmos_rec_addr = 0;
+				cmos_rec_bit = 0;
+				cmos_rec_started = 1;
+			}
+		} else {
+			// Receive loop
+			cmos_rec_bit++;
+			if(cmos_rec_bit>7) {
+				cmos_rec_bit = 0;
+				if(cmos_rec_addr<CMOS_SIZE) cmos_temp[cmos_rec_addr] = cmos_receiver_data;
 
-    }
+				if(cmos_rec_addr>=CMOS_SIZE) { // 34th byte
+					if(cmos_receiver_data==0xAA) { // Receive OK!
+						uint32_t checksum = 0;
 
-    return 0;
+						uart1_puts("Receive OK.\r\nWriting to EEPROM ");
+						for(int i=0; i<CMOS_SIZE; i++) {
+							eeprom_update_byte(EE_PTR(EE_ADDR_CONF + i), cmos_temp[i]);
+							checksum += cmos_temp[i];
+						}
+						eeprom_write_dword(EE_DWORD_PTR(EE_ADDR_CHKSUM), checksum);
+
+						uart1_puts("OK\r\n");
+
+						// Debug dump
+						uart1_puts("Debug dump:\r\n");
+						for(int i=0; i<CMOS_SIZE; i++) {
+							uart1_puthex8(cmos_temp[i]);
+							uart1_putc(' ');
+							if(i%16==15) uart1_puts("\r\n");
+						}
+						uart1_puts("\r\n");
+
+					} else { // Receive bad
+						uart1_puts(" Interrupted\r\n\r\n");
+					}
+					cmos_rec_started = 0;
+				}
+
+				cmos_rec_addr++;
+
+			} // end of cmos_rec_bit>7
+		}
+	}
+
+	return 0;
 }
-
