@@ -28,8 +28,8 @@ ENTITY wr_rd_generator IS
 		ADS				: IN	STD_LOGIC;
 		RW				: IN	STD_LOGIC;
 		MIO				: IN	STD_LOGIC;
-		EN_WRRD			: IN  STD_LOGIC; -- negated
-		WAITSTATE_CNT	: IN  INTEGER RANGE 0 to 127;
+		EN_WRRD			: IN	STD_LOGIC; -- negated
+		WAITSTATE_CNT	: IN	INTEGER RANGE 0 to 127;
 
 		RDY				: OUT	STD_LOGIC;
 		MEM_WR			: OUT	STD_LOGIC;
