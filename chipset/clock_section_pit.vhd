@@ -49,7 +49,7 @@ BEGIN
         CLKFB   => CLKFB,     -- feedback from BUFG
         RST     => '0',       -- no reset
         CLKDV   => CLKDV_raw, -- divided clock
-        CLK0    => CLK0_raw,  -- 0° output for feedback
+        CLK0    => CLK0_raw,  -- output for feedback
         CLK90   => open,
         CLK180  => open,
         CLK270  => open,

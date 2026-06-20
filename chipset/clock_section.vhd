@@ -76,7 +76,7 @@ begin
         CLKFB   => CLKFB,
         RST     => '0',
         CLKDV   => open,      -- not used
-        CLK0    => CLK0_raw,  -- 0° output for feedback and system clock
+        CLK0    => CLK0_raw,  -- output for feedback and system clock
         CLK90   => open,
         CLK180  => open,
         CLK270  => open,
@@ -138,7 +138,7 @@ end Behavioral;
 
 
 
-----------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 --
 --library IEEE;
 --use IEEE.STD_LOGIC_1164.ALL;
@@ -192,7 +192,7 @@ end Behavioral;
 --        CLKFB   => CLKFB,     -- feedback from BUFG
 --        RST     => '0',       -- no reset
 --        CLKDV   => CLKDV_raw, -- divided clock
---        CLK0    => CLK0_raw,  -- 0° output for feedback
+--        CLK0    => CLK0_raw,  -- output for feedback
 --        CLK90   => open,
 --        CLK180  => open,
 --        CLK270  => open,
