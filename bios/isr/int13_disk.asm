@@ -1,5 +1,5 @@
 ; Disk BIOS
-;
+; TO DO: Slave disk support and floppy?
 
 %include "drivers/ide.asm"
 
@@ -87,6 +87,18 @@ int13_no_drive:
 	mov ah, 15
 	stc
 	jmp iret_carry
+	
+int13_rw_error:
+	push ax
+	push ds
+	mov ax, 0x40
+	mov ds, ax
+	mov [disk_error], byte 0x04  ; 0x04 = Read/Write Error
+	pop ds
+	pop ax
+	mov ah, 0x04
+	stc
+	jmp iret_carry
 
 int13_reset:
 	; Reset the drive
@@ -135,6 +147,7 @@ int13_read_check_al_done:
 	pop cx
 	pop bx
 	pop ax
+	jc int13_rw_error
 	jmp int13_success
 
 	jmp int13_not_ready
@@ -167,6 +180,7 @@ int13_write_check_al_done:
 	pop cx
 	pop bx
 	pop ax
+	jc int13_rw_error
 	jmp int13_success
 
 	jmp int13_not_ready
@@ -243,11 +257,18 @@ int13_15_floppy:
 
 
 int13_func41:
+
 	call ide_check_lba
+	jc int13_not_ready      ; unsure if correct in case of missing lba support
 	jmp int13_success
 
 int13_func42:
+    cmp dl, 0x80
+	jne int13_not_ready
+	
 	call ide_read_lba
+	
+	jc int13_rw_error
 	jmp int13_success
 
 ; int13_calc_lba

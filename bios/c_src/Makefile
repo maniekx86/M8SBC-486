@@ -4,7 +4,7 @@ LD = i686-linux-gnu-ld
 ASM = nasm
 PYTHON3 = python3
 
-C_SOURCES = main.c interrupts.c vga.c utils.c cpudetect.c about.c ide.c cmos.c setup.c
+C_SOURCES = main.c interrupts.c vga.c utils.c cpudetect.c keyboard.c about.c ide.c cmos.c setup.c
 ASM_SOURCES = entry.asm
 
 VERSION ?= "?.??"

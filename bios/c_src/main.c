@@ -1,7 +1,8 @@
 #include <stdint.h>
 #include "x86io.h"          // IN(), OUT(), INW(), OUTW()
-#include "interrupts.h"     // IDT, PIC, IRQ0 and IRQ1 ISR and handlers (timer + keyboard), keyboard functions
+#include "interrupts.h"     // IDT, PIC, IRQ ISRs
 #include "utils.h"          // C utility functions (strings, memory)
+#include "keyboard.h"       // Onboard compatible 8042 PS/2 controller functions
 #include "vga.h"            // VGA print, VGA text mode logo
 #include "cpudetect.h"      // CPUID parse, Cyrix check, FPU check
 #include "ide.h"            // IDE functions and detection
@@ -17,6 +18,7 @@
 #define POST(x) outb(0x80, x)
 
 volatile uint32_t *cpuid_edx = (uint32_t*)0x5F0;  // DX from reset is stored to 0x5F0 by ASM
+// volatile uint16_t *bda_warm_boot = (uint16_t*)0x472; // Warm boot flag. If set to 0x1234, skip some checks. Needs fixes in real mode asm, so TODO
 
 // Global variables
 uint16_t cpuid;
@@ -49,7 +51,7 @@ struct memtest_regions_struct {
     {0x04A0000, 6}
 };
 
-void memory_error(uint32_t read, uint32_t expected, uint32_t location, int x_pos) { // TO UPDATE
+void memory_error(uint32_t read, uint32_t expected, uint32_t location, int x_pos) { // TO UPDATE/IMPROVE
     char buf[16];
     
     POST(0xE1); // E1 - Extended memory test failed
@@ -161,8 +163,9 @@ enum POST_action_enum {
     POST_ABOUT
 } POST_action;
 
-void POST_irq1_int() {
+void POST_kb_handle() {
     // kb buffer should be always not empty when this routine is executed
+    // Future TODO - work on translated keys instead of working with raw keys
     uint8_t scancode = kb_get_scancode();
 
     switch (scancode) {
@@ -213,7 +216,7 @@ void main() {
     // Interrupts are disabled
     POST(0x80); // 80 - C main() running. IDT init
     
-    idt_init(); // Masks all IRQ internally
+    idt_init(); // Remaps and masks all IRQ internally ( pic_remap(0x20); pic_set_mask(0xFF); )
     
     POST(0x81); // 81 - CMOS read
 
@@ -226,22 +229,25 @@ void main() {
     cpuid = (uint16_t)(*cpuid_edx & 0xFFFF);
     detect_486_model(cpuid, cyrix_cpu, cpu_model, 0);
 
-    POST(0x83); // 83 - PIT setup
+    POST(0x83); // 83 - PIT setup and test
     
-    pit_set_int_freq(100); // PIT is not yet set
-    kb_clear_buffer();
+    // 100 Hz and enable PIT IRQ
+    pit_set_int_freq(100);
+    pic_enable_irq(0);
     
-    pic_set_mask(0b11111100); // keyboard and PIT
     sti();
     while(1) { // Verify that interrupts work
         if(irq0_ticks>3) break;
         asm volatile("nop");
+        // If this loop never exits, verify PIT and PIC, TODO: timeout and error message
     }
     
-    POST(0x84); // 84 - PIC test pass
+    POST(0x84); // 84 - Keyboard initialization and test
+    
+    kb_init();
 
     POST_action = POST_NORMAL;
-    irq1_register_callback(POST_irq1_int);
+    kb_set_callback(POST_kb_handle);
 
     cli();
 
@@ -307,6 +313,10 @@ void main() {
     sti();
     
     POST(0x87); // 87 - Extended memory test
+    
+    // if(bda_warm_boot==0x1234) { // Warm boot. needs fixes in real mode asm, so TODO
+    //   skip_memory_test = 1;
+    // }
 
     memory_test(cmos_get(CMOS_QUICK_MEMTEST));
     
@@ -329,7 +339,7 @@ void main() {
     
     POST(0x89); // 89 - POST display wait
 
-    irq1_register_callback(NULL);
+    kb_set_callback(NULL);
 
     uint32_t boot_delay;
 

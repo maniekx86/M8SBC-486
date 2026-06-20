@@ -7,7 +7,7 @@ Experimental "chipset" made for M8SBC-486.
 - 24 MHz max FSB (At current time of writing, might be possible to go further)
 - Can address up to a maximum of 4MB of SRAM
 - No support for burst data transfers
-- Integrated keyboard controller (not full implementation, yet)
+- Integrated [8042 compatible keyboard controller](https://github.com/maniekx86/kbc_8042_vhdl)
 - Integrated simple RTC/CMOS (CMOS volatile)
 
 Full documentation: TO DO. At this time some information available is [here](https://maniek86.xyz/projects/m8sbc_486_hw_chp.php).

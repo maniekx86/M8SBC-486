@@ -1,7 +1,7 @@
 # Makefile for BIOS build
 # Requirements: nasm, dd, make
 
-VERSION := "A2.01"
+VERSION := "A2.02"
 
 # Tools
 NASM := nasm

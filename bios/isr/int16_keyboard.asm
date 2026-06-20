@@ -6,14 +6,6 @@ int16:
 	mov di, 0x40
 	mov ds, di
 
-	; Wait for interrupt controller to process keyboard interrupt
-	sti
-	push cx
-	mov cx, 5
-	loop $
-	pop cx
-	cli
-
 	cmp ah, 0
 	je keyb_get
 	cmp ah, 1
@@ -32,7 +24,17 @@ int16:
 	xor al, al
 	jmp keyb_done
 
-keyb_get:
+keyb_get:                   ; INT 16 AH=00 is blocking
+    sti
+.wait_for_key:
+    mov ax, [keybuf_tail]
+	cmp ax, [keybuf_head]
+	jne .read_key           ; there's key in buffer, read it
+    hlt                     ; we can halt cpu until we wait for the KB interrupt (interrupt will wake anyway CPU)
+    jmp .wait_for_key
+    
+.read_key:
+    cli                     ; ensure buffer isn't accesed while read
 	mov ax, [keybuf_tail]
 	xor ax, [keybuf_head]
 	and ax, 0x1E
@@ -50,6 +52,7 @@ keyb_get:
 	jmp keyb_done
 
 keyb_peek:
+    cli                     ; ensure buffer isn't accesed while read
 	mov ax, [keybuf_tail]
 	xor ax, [keybuf_head]
 	and ax, 0x1E

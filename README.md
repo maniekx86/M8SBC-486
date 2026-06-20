@@ -16,7 +16,7 @@ This project is a 486 Homebrew computer, with some efforts to make it kinda PC c
 - 8254 Programmable Interval Timer
 - 8259 Programmable Interrupt Controller
 - Two 16-bit ISA slots
-- PS/2 Keyboard port. Controller is implemented in the FPGA
+- 8042 compatible PS/2 keyboard controller. Implemented in the FPGA
 - Simple CMOS RTC and CMOS storage. Implemented in the FPGA too
 - ATMega128 as reset circuit handler, nonvolatile CMOS storage and bitstream loader.
 
@@ -28,11 +28,11 @@ Secondary PIC and DMA are missing, so the compatibility is not full. The missing
 
 The hardware and FPGA are mostly done. BIOS is capable of booting DOS. There are a few issues & bugs, but they are being slowly fixed.
 
-Among the most impressive things the board (as time of writing: 14/03/2026) is capable of: 
+Among the most impressive things the board (as time of writing: 20/06/2026) is capable of:
 
-- Booting Linux (2.2.26) ([using custom bootloader](https://github.com/maniekx86/linux_m8sbc_boot))
+- Running Linux 2.2.26 ([using custom bootloader](https://github.com/maniekx86/linux_m8sbc_boot)) and Linux 4.4.302 (documentation is coming soon)
 
-- Booting MS-DOS and FreeDOS: The software compatibility is mixed. Some software hangs the system, throws exceptions, but some run fine. Most notable are: Second Reality demo (no sound), Prince of Persia, Wolfenstein 3D, Fasttracker II (PC speaker works in one mode, LPT DAC works okay), 3DBench 1.0c, CACHECHK.
+- Running MS-DOS and FreeDOS: The software compatibility is mixed. Some software hangs the system, throws exceptions, but some run fine. Most notable are: Second Reality demo (no sound), Prince of Persia, Wolfenstein 3D, Fasttracker II (PC speaker works in one mode, LPT DAC works okay), 3DBench 1.0c, CACHECHK. For more software checks and detailed information, see the compatibility table on the [project's website](https://maniek86.xyz/projects/m8sbc_486.php).
 
 - Running DOOM ([FastDOOM](https://github.com/viti95/FastDoom) running on FreeDOS 1.4)
 

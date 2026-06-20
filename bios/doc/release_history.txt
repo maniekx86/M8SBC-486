@@ -4,6 +4,13 @@ Current known BIOS issues:
   - No LBA write support
   - Compact flash cards get randomly corrupted (unsure if it's a hardware or BIOS issue).
 
+A2.02:
+  Notes:
+    - Requires chipset version 0003 (keyboard controller rewrite, way better 8042 compatibility)
+  Changes / fixes:
+    - Major extension BIOS ROM caller bug fix: better graphics card compatibility
+    - Major keyboard driver update: Caps lock, Num lock and Scroll lock support, PS/2 two way communication. 
+    - IDE driver fixes and optimizations (flash cards writes are still broken)
 
 A2.01:
   Changes / fixes:

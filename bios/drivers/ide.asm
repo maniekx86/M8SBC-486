@@ -221,7 +221,7 @@ ide_check_lba: ; Get Extended Drive Parameters
 	ret
 
 
-; Extended Read Sectors From Drive (LBA)
+; ide_read_lba - Extended Read Sectors From Drive (LBA)
 ; DL - drive (0x80)
 ; DS:SI - pointer to packet structure
 ; Packet structure:
@@ -249,9 +249,11 @@ ide_read_lba:
     cmp al, 0x40
     jne .wait_ready42
 
-    mov dx, IDE_PORT_HEAD_DRV_LBA ; select 
-    mov al, 0xE0
-    out dx, al ; select drive (master)
+    mov al, [ds:si + 11]  ; Read LBA bits 24-27
+    and al, 0x0F          
+    or  al, 0xE0          ; LBA, Master drive (TO DO: add support for slave)
+    mov dx, IDE_PORT_HEAD_DRV_LBA
+    out dx, al
 
 	mov dx, 0x80 ; io wait
 	in al, dx
@@ -301,7 +303,7 @@ ide_read_lba:
 
 .read_loop42:
 	; wait for DRQ=1 (bit 3)
-	push dx
+
 .wait_drq42:
 	mov dx, 0x80 ; io wait
 	in al, dx
@@ -311,19 +313,22 @@ ide_read_lba:
 	cmp al, 0b00001000
 	jne .wait_drq42
 	
-	pop dx
+	mov dx, IDE_PORT_DATA
 
-    push cx ; use cx as block counter, but save it as we use cx for word count too
-    mov cx, 256 ; word counter
-.read_loop_words42:
-    in word ax, dx
-    mov [es:bx], ax
-    add bx, 2
-    dec cx
-    jnz .read_loop_words42
-
-    pop cx ; restore block counter and decrement
-    dec cx ; block count
+    push cx         ; use cx as block counter, but save it as we use cx for word count too
+    push di
+    
+    mov di, bx      ; rep insw uses es:di, so point DI to BX offset
+    mov cx, 256     ; 256 words
+    cld             ; direction forward
+    rep insw        ; read
+    
+    mov bx, di      ; update bx for next sector
+    
+    pop di         
+    pop cx          ; restore block counter and decrement
+    
+    dec cx          ; block count
     jnz .read_loop42
 
 	pop es
@@ -345,7 +350,7 @@ ide_read_lba:
 
 
 
-; ide_read
+; ide_read - Classic read (CHS)
 ; IDE HDD read
 ; In:
 ;   AL - number of sectors to read
@@ -363,29 +368,35 @@ ide_read:
 	mov al, IDE_HDD_READ
 	mov dx, IDE_PORT_CMD
 	out dx, al
+	
+	mov dx, 0x80 ; io wait
+	in al, dx
+	in al, dx
+	in al, dx
+	in al, dx
 
 	pop ax
 
-ide_read_loop:
+.ide_read_loop:
 	or al, al
-	jz ide_read_done
+	jz .ide_read_done
 	call ide_wait
-	jc ide_read_timeout
+	jc .ide_read_timeout
 	mov cx, 256
 	mov dx, IDE_PORT_DATA
-	push ax
-ide_read_data:
-	in ax, dx
-	mov [es:bx], ax
-	add bx, 2
-	loop ide_read_data
-	pop ax
+.ide_read_data:
+    push di      
+    mov di, bx      ; di = buffer offset
+    cld             ; direction
+    rep insw        ; read 256 words (cx)
+    mov bx, di      ; update bx for next sector
+    pop di 
 	sub al, 1
-	jmp ide_read_loop
-ide_read_done:
+	jmp .ide_read_loop
+.ide_read_done:
 	clc
 	ret
-ide_read_timeout:
+.ide_read_timeout:
 	ret
 
 ; ide_write
@@ -406,27 +417,42 @@ ide_write:
 	mov al, IDE_HDD_WRITE
 	mov dx, IDE_PORT_CMD
 	out dx, al
+	
+	mov dx, 0x80 ; io wait
+	in al, dx
+	in al, dx
+	in al, dx
+	in al, dx
 
 	pop ax
 
-ide_write_loop:
+.ide_write_loop:
 	or al, al
-	jz ide_write_done
+	jz .ide_write_done
 	call ide_wait
-	jc ide_write_timeout
+	jc .ide_write_timeout
 	mov cx, 256
 	mov dx, IDE_PORT_DATA
 	push ax
-ide_write_data:
-	mov ax, [es:bx]
-	out dx, ax
-	add bx, 2
-	loop ide_write_data
+.ide_write_data:
+    push ds         ; data index
+    push si         ; source index
+    mov ax, es  
+    mov ds, ax      ; es = ax
+    mov si, bx      ; si = bx. ds:si is es:bx now
+    
+    cld             ; direction
+    rep outsw
+    
+    mov bx, si      ; update bx for next sector
+    
+    pop si
+    pop ds
 	pop ax
 	sub al, 1
-	jmp ide_write_loop
-ide_write_done:
+	jmp .ide_write_loop
+.ide_write_done:
 	clc
 	ret
-ide_write_timeout:
+.ide_write_timeout:
 	ret

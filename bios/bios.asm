@@ -97,6 +97,12 @@ normal_restart:
 
 	; Set interrupt controller (PICs 8259) registers
 %include "drivers/pic.asm"
+
+    ; Warm boot check <- probably currently broken TODO: fix
+    mov ax, 0x40
+	mov ds, ax
+	cmp word [0x0072], 0x1234
+	je skip_base_mem_test
 	
 	mov al, 0x03 ; POST 03 - Base 64K memory test
 	out 0x80, al
@@ -109,6 +115,7 @@ normal_restart:
 	mov ax, 0x40 ; Setup segments back
 	mov ds, ax
 
+skip_base_mem_test: ; ds is 0x40 in case of skip
 	mov dx, sp ; CPUID was stored temporary in SP
 	mov ds:[0x1F0], dx ; save CPUID to 0x5F0
 
@@ -116,6 +123,12 @@ normal_restart:
 	xor ax, ax
 	mov ss, ax
 	mov sp, 0x1000
+    
+    ; Clear KB controller
+    in al, 0x60
+    in al, 0x60
+    in al, 0x60
+    in al, 0x60
 
 	mov al, 0x04 ; POST 04 - BIOS data setup (IVT, BDA)
 	out 0x80, al
@@ -186,7 +199,7 @@ erase_ints2:
 	mov ax, 0x40
 	mov ds, ax
 	mov word [bios_temp + 2], 0xC000
-	mov word [bios_temp], 2
+	mov word [bios_temp], 3
 scan_roms:
 	mov ax, [bios_temp + 2]
 	mov es, ax
@@ -207,7 +220,6 @@ no_rom:
 	;mov ds, ax
 	;mov [0x42 * 4], word int10 ; int 42h EGA/VGA/PS - Relocated (by EGA) Video Handler (original INT 10h)
 	;mov [0x42 * 4 + 2], word 0xF000
-
 
 	mov al, 0x06 ; POST 06 - VGA init
 	out 0x80, al

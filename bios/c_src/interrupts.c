@@ -1,5 +1,7 @@
 #include "interrupts.h"
 
+static uint8_t pic_mask;
+
 /* --- Structures --- */
 struct idt_entry_t {
     uint16_t offset_low;
@@ -54,6 +56,7 @@ void pic_remap(int offset1) {
     outb(0x21, 0); io_wait(); // no slave
     outb(0x21, 0x01); io_wait();
     outb(0x21, 0xFF); // all IRQ masked
+    pic_mask = 0xFF;
 
     outb(0x20, 0x20); // clear
 }
@@ -75,13 +78,22 @@ void pit_set_int_freq(uint32_t freq) {
     outb(0x40, (divisor >> 8) & 0xFF); // High byte
 }
 
-////// interrupt handlers
-
-static irq1_callback_ptr irq1_stored_callback = 0;
-
-void irq1_register_callback(irq1_callback_ptr func) {
-    irq1_stored_callback = func;
+void pic_set_mask(uint8_t mask) {
+    pic_mask = mask;
+    outb(0x21, mask);
 }
+void pic_enable_irq(uint8_t irq) { // Mask must be set prior to calling these two funcs
+    pic_mask &= ~(0x1 << irq);
+    outb(0x21, pic_mask);
+}
+void pic_disable_irq(uint8_t irq) {
+    pic_mask |= (0x1 << irq);
+    outb(0x21, pic_mask);
+}
+
+
+
+////// interrupt handlers
 
 uint32_t irq0_ticks = 0;
 
@@ -90,43 +102,9 @@ void c_isr_irq0() { // Timer tick
     irq0_ticks++;
 }
 
-#define KB_BUF_SIZE 8
-
-static uint8_t kb_buffer[KB_BUF_SIZE];
-static uint8_t kb_buffer_read = 0;
-static uint8_t kb_buffer_write = 0;
 
 void c_isr_irq1() { // Keyboard input
-    while(inb(0x64) & 0x01) { // While bit 0 is 1 (data available)
-        uint8_t scancode = inb(0x60);
-        
-        kb_buffer_write++;
-        if(kb_buffer_write>=KB_BUF_SIZE) kb_buffer_write = 0;
-        kb_buffer[kb_buffer_write] = scancode;
-    }
-
-    if (irq1_stored_callback != NULL) {
-        irq1_stored_callback();
-    }
+    kb_interrupt_handle();
 }
 
-int kb_is_available() {
-    if(kb_buffer_read!=kb_buffer_write) return 1;
-    return 0;
-}
 
-uint8_t kb_get_scancode() {
-    if(kb_buffer_read==kb_buffer_write) return 0;
-    kb_buffer_read++;
-    if(kb_buffer_read>=KB_BUF_SIZE) kb_buffer_read = 0;
-    return kb_buffer[kb_buffer_read];
-}
-
-void kb_clear_buffer() {
-    kb_buffer_read = 0;
-    kb_buffer_write = 0;
-
-    while(inb(0x64) & 0x01) {
-        inb(0x60);
-    }
-}

@@ -3,6 +3,7 @@ out/
 c_src/out/
 *.o
 *.bin
+*.rom
 *.elf
 
 bochsrc

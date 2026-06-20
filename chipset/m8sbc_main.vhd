@@ -100,8 +100,8 @@ ENTITY m8sbc_main IS
 		PIT_LATCH_LE		: OUT		STD_LOGIC;
 		
 	-- Keyboard controller (IO 0x60)
-		PS2_CLK				: IN		STD_LOGIC;
-		PS2_DATA				: IN		STD_LOGIC;
+		PS2_CLK				: INOUT	STD_LOGIC;
+		PS2_DATA				: INOUT	STD_LOGIC;
 		PS2_INTERUPT		: OUT		STD_LOGIC;
 		
 	-- CMOS NVRAM AVR interface
@@ -117,7 +117,7 @@ ARCHITECTURE Behavioral OF m8sbc_main IS
 	-- CONSTANTS
 	-- Update Divider in CLKGEN!
 	
-	CONSTANT FPGA_VER						: STD_LOGIC_VECTOR(31 DOWNTO 0) := x"48860002"; -- first 2 bytes - chipset ident, last 2 bytes - version
+	CONSTANT FPGA_VER						: STD_LOGIC_VECTOR(31 DOWNTO 0) := x"48860003"; -- first 2 bytes - chipset ident, last 2 bytes - version
 	
 	
 	CONSTANT REVERSE_CLOCK				: STD_LOGIC	:= '0'; -- Use 1 for 12 MHz, for 16> use 0
@@ -319,6 +319,31 @@ ARCHITECTURE Behavioral OF m8sbc_main IS
 		);
 	END COMPONENT;
 	
+	COMPONENT KBC_8042 IS
+		PORT (
+			CLK			: IN		STD_LOGIC; -- min freq 8 MHz
+			CLK_1_1931M	: IN		STD_LOGIC; -- fixed freq (14.318 MHz / 12)
+			RST_n			: IN		STD_LOGIC;
+			
+			CS_n			: IN		STD_LOGIC;
+			RD_n			: IN		STD_LOGIC;
+			WR_n			: IN		STD_LOGIC;
+			A2				: IN		STD_LOGIC;
+			DATA_IN		: IN		STD_LOGIC_VECTOR(7 DOWNTO 0);
+			DATA_OUT		: OUT 	STD_LOGIC_VECTOR(7 DOWNTO 0);
+			
+			PS2_CLK_IN	: IN		STD_LOGIC;
+			PS2_CLK_OUT	: OUT		STD_LOGIC; -- 1 / 0 - in external logic 1 should be converted to Z and pulled up to vcc
+			PS2_DAT_IN	: IN		STD_LOGIC;
+			PS2_DAT_OUT	: OUT		STD_LOGIC; -- 1 / 0 - same as above
+			
+			IRQ1			: OUT		STD_LOGIC;
+			A20_GATE		: OUT		STD_LOGIC;
+			CPU_RESET_n	: OUT		STD_LOGIC
+		);
+	END COMPONENT;
+
+	
 	COMPONENT CMOS IS
 		PORT (
 			CLK_IN	: IN	STD_LOGIC;
@@ -401,6 +426,14 @@ ARCHITECTURE Behavioral OF m8sbc_main IS
 	SIGNAL	PS2_RD_CLEAR		: STD_LOGIC;
 	
 	SIGNAL	O_CMOS_DATA_OUT	: STD_LOGIC_VECTOR(7 downto 0);
+	SIGNAL	O_PS2_DATA_OUT		: STD_LOGIC_VECTOR(7 downto 0);
+	
+	SIGNAL	O_PS2_RESET_REQ	: STD_LOGIC;
+	
+	SIGNAL	IO_PS2_CLK_IN		: STD_LOGIC;
+	SIGNAL	IO_PS2_CLK_OUT		: STD_LOGIC;
+	SIGNAL	IO_PS2_DAT_IN		: STD_LOGIC;
+	SIGNAL	IO_PS2_DAT_OUT		: STD_LOGIC;
 	
 	SIGNAL	I_INT_ACK		: STD_LOGIC;
 	
@@ -547,19 +580,41 @@ BEGIN
 		ISA_SBHE			=> ISA_SBHE
 	);
 	
-	KBCTRL: keyboard_controller PORT MAP(
-		CLK			=> CLK_PIT, -- 1.1 MHz, used for transfer timeout
-		PS2_CLK		=> PS2_CLK,
-		PS2_DATA		=> PS2_DATA,
-		RESET			=> RESET_SYS_IN,
+--	KBCTRL: keyboard_controller PORT MAP(
+--		CLK			=> CLK_PIT, -- 1.1 MHz, used for transfer timeout
+--		PS2_CLK		=> PS2_CLK,
+--		PS2_DATA		=> PS2_DATA,
+--		RESET			=> RESET_SYS_IN,
+--		
+--		CLEAR_BUF	=> '0',
+--		
+--		D_OUT			=> O_PS2_DATA,
+--		DS_OUT		=> O_PS2_STATUS,
+--		CLK_CPU		=> CLK_CPU,
+--		RD_CLEAR		=> PS2_RD_CLEAR,
+--		INT_OUT		=> O_PS2_INT
+--	);
+	
+	KB8042CTRL: KBC_8042 PORT MAP(
+		CLK			=> CLK_CPU,
+		CLK_1_1931M	=> CLK_PIT,
+		RST_n			=> NOT RESET_SYS_IN,
 		
-		CLEAR_BUF	=> '0',
+		CS_n			=> I_CS_PS2,
+		RD_n			=> O_IO_RD,
+		WR_n			=> O_IO_WR,
+		A2				=> CPU_IN_ADDR(2),
+		DATA_IN		=> CPU_DATA,
+		DATA_OUT		=> O_PS2_DATA_OUT,
 		
-		D_OUT			=> O_PS2_DATA,
-		DS_OUT		=> O_PS2_STATUS,
-		CLK_CPU		=> CLK_CPU,
-		RD_CLEAR		=> PS2_RD_CLEAR,
-		INT_OUT		=> O_PS2_INT
+		PS2_CLK_IN	=> IO_PS2_CLK_IN,
+		PS2_CLK_OUT	=> IO_PS2_CLK_OUT,
+		PS2_DAT_IN	=> IO_PS2_DAT_IN,
+		PS2_DAT_OUT	=> IO_PS2_DAT_OUT,
+		
+		IRQ1			=> O_PS2_INT,
+		--A20_GATE		=>
+		CPU_RESET_n	=> O_PS2_RESET_REQ -- active LOW, reset_req is active LOW too
 	);
 	
 	cmos_rtc: CMOS PORT MAP(
@@ -662,24 +717,15 @@ BEGIN
 	
 	
 	-- Output from the FPGA to the CPU data bus driver
-	PROCESS(O_IO_RD, CPU_IN_WR, I_CS_PS2, I_CS_O61, I_CS_CMOS, CPU_IN_ADDR, O_PS2_STATUS, O_PS2_DATA, O61_DATA_L, O_CMOS_DATA_OUT) 
+	PROCESS(O_IO_RD, CPU_IN_WR, I_CS_PS2, I_CS_O61, I_CS_CMOS, CPU_IN_ADDR, O_PS2_DATA_OUT, O61_DATA_L, O_CMOS_DATA_OUT) 
 	BEGIN
 		O_CPU_DATA <= "ZZZZZZZZ";
 		O_CPU_DATA_P_O <= '0';
 		
-		PS2_RD_CLEAR <= '1';
 		IF (CPU_IN_WR = '0') THEN -- only allow bus drive on reads
 			IF (O_IO_RD = '0') THEN 
-			
 				IF (I_CS_PS2 = '0') THEN -- PS2 read
-					
-					IF CPU_IN_ADDR(2) = '1' THEN -- 0x64
-						O_CPU_DATA <= O_PS2_STATUS;
-					ELSE -- 0x60
-						O_CPU_DATA <= O_PS2_DATA;
-						PS2_RD_CLEAR <= '0'; -- send clear signal to the PS2
-					END IF;
-					
+					O_CPU_DATA <= O_PS2_DATA_OUT;
 					O_CPU_DATA_P_O <= '1';
 				ELSIF (I_CS_O61 = '0') THEN -- O61 read
 					O_CPU_DATA <= O61_DATA_L;
@@ -723,6 +769,20 @@ BEGIN
 		
 	END PROCESS;
 	
+	-- PS/2 I/O handling
+	-- PS2_CLK_IN	=> IO_PS2_CLK_IN,
+	-- PS2_CLK_OUT	=> IO_PS2_CLK_OUT,
+	-- PS2_DAT_IN	=> IO_PS2_DAT_IN,
+	-- PS2_DAT_OUT	=> IO_PS2_DAT_OUT,
+	-- PS2_CLK (INOUT PIN)
+	-- PS2_DATA (INOUT PIN)
+	
+	PS2_CLK <= '0' WHEN IO_PS2_CLK_OUT = '0' ELSE 'Z';
+	IO_PS2_CLK_IN <= PS2_CLK;
+	
+	PS2_DATA <= '0' WHEN IO_PS2_DAT_OUT = '0' ELSE 'Z';
+	IO_PS2_DAT_IN <= PS2_DATA;
+	
 	
 	
 	CLK_OUT_CPU 	<= NOT CLK_CPU WHEN REVERSE_CLOCK = '1' ELSE CLK_CPU; -- For some timings? reason, running below 16 MHz requires inverting clock
@@ -733,7 +793,7 @@ BEGIN
 	ADDR_A0			<= O_A0_BLE;
 	ADDR_A1			<= O_A1;
 	
-	PS2_INTERUPT	<= NOT O_PS2_INT;
+	PS2_INTERUPT	<= O_PS2_INT;
 
 	ROM_CS 			<= I_CS_ROM;
 	
@@ -742,7 +802,8 @@ BEGIN
 	CPU_OUT_RDY		<= O_RDY_ISA OR O_RDY_RAM OR O_RDY_WRRD;
 
 	
-	RESET_REQ_OUT	<= '1'; -- active LOW
+	--RESET_REQ_OUT	<= '1'; -- active LOW
+	RESET_REQ_OUT	<= O_PS2_RESET_REQ;
 	CPU_OUT_NMI		<= '0';
 	PIC_INTA			<= O_IO_RD WHEN I_INT_ACK = '0' ELSE '1'; -- Int ack for 8259 is like RD. 486 holds INTA state both reads so we need to use IO_RD feature
 

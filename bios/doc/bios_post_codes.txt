@@ -15,8 +15,8 @@ M8SBC-486 SeaPig BIOS A2.01 POST codes
 | 80 | C main() running. IDT init
 | 81 | CMOS read
 | 82 | CPU identification
-| 83 | PIT setup
-| 84 | PIT test pass
+| 83 | PIT setup and test
+| 84 | Keyboard initialization and test
 | 85 | BIOS POST display init
 | 86 | BIOS POST display
 | 87 | Extended memory test

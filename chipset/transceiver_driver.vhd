@@ -35,77 +35,31 @@ ENTITY transceiver_driver IS
 END transceiver_driver;
 
 ARCHITECTURE Behavioral OF transceiver_driver IS
-
+	SIGNAL s_8bit  : STD_LOGIC;
+	SIGNAL s_16bit : STD_LOGIC;
 BEGIN
 
-   PROCESS (BE, BS8, BS16)
-		VARIABLE bs_comb	: STD_LOGIC_VECTOR(1 downto 0);
-	BEGIN
-		bs_comb := BS8 & BS16;
-      CASE bs_comb IS
-         WHEN "01" =>
-            -- BS8 active
-				
-				TR_8B <= "1111";
-				TR_16B_LOW <= '1';
-				TR_16B_HIGH <= '1';
-				
+    -- Decode bus state internally
+    s_8bit  <= '1' WHEN (BS8 = '0' AND BS16 = '1') ELSE '0';
+    s_16bit <= '1' WHEN (BS8 = '1' AND BS16 = '0') ELSE '0';
 
-				IF BE(0) = '0' THEN
-					TR_8B(0) <= '0';
-				ELSE 
-					IF BE(1) = '0' THEN
-						TR_8B(1) <= '0';
-					ELSE
-						IF BE(2) = '0' THEN
-							TR_8B(2) <= '0';
-						ELSE
-							IF BE(3) = '0' THEN
-								TR_8B(3) <= '0';
-							END IF;
-						END IF;
-					END IF;
-				END IF; 
+    -- TR_8B(0): Active in either mode if BE(0) is active
+    TR_8B(0) <= '0' WHEN ((s_8bit = '1' OR s_16bit = '1') AND BE(0) = '0') ELSE '1';
 
-					
-			WHEN "10" =>
-				-- BS16 active
-				
-				TR_8B <= "1111";
-				TR_16B_LOW <= '1';  -- Higher 8 bits to 8-15
-				TR_16B_HIGH <= '1'; -- Higher 8 bits to 24-31
-				
-				IF BE(0) = '0' THEN -- start 0
-					TR_8B(0) <= '0'; -- 8b (0)
-					IF BE(1) = '0' THEN -- 16b if 0-15
-						TR_16B_LOW <= '0';
-					END IF;
-				ELSE 
-					IF BE(1) = '0' THEN -- start 8
-						TR_16B_LOW <= '0'; -- only 8b possible
-					ELSE
-						IF BE(2) = '0' THEN -- start 16
-							TR_8B(2) <= '0'; -- 8b (2)
-							IF BE(3) = '0' THEN -- 16b if 16-31
-								TR_16B_HIGH <= '0';
-							END IF;
-						ELSE
-							IF BE(3) = '0' THEN -- start 24
-								TR_16B_HIGH <= '0'; -- only 8b possible
-							END IF;
-						END IF;
-					END IF;
-				END IF;
-				
-            
-         WHEN OTHERS =>
-            TR_8B <= "1111";
-				TR_16B_LOW <= '1';
-				TR_16B_HIGH <= '1';
-      END CASE;  
-		
-		
-   END PROCESS;
+    -- TR_8B(1): Active only in 8-bit mode if BE(0) is inactive and BE(1) is active
+    TR_8B(1) <= '0' WHEN (s_8bit = '1' AND BE(0) = '1' AND BE(1) = '0') ELSE '1';
+
+    -- TR_8B(2): Active in either mode if BE(0..1) are inactive and BE(2) is active
+    TR_8B(2) <= '0' WHEN ((s_8bit = '1' OR s_16bit = '1') AND BE(0) = '1' AND BE(1) = '1' AND BE(2) = '0') ELSE '1';
+
+    -- TR_8B(3): Active only in 8-bit mode if BE(0..2) are inactive and BE(3) is active
+    TR_8B(3) <= '0' WHEN (s_8bit = '1' AND BE(0) = '1' AND BE(1) = '1' AND BE(2) = '1' AND BE(3) = '0') ELSE '1';
+
+    -- TR_16B_LOW: Active only in 16-bit mode if BE(1) is active
+    TR_16B_LOW <= '0' WHEN (s_16bit = '1' AND BE(1) = '0') ELSE '1';
+
+    -- TR_16B_HIGH: Active only in 16-bit mode if BE(0..1) are inactive and BE(3) is active
+    TR_16B_HIGH <= '0' WHEN (s_16bit = '1' AND BE(0) = '1' AND BE(1) = '1' AND BE(3) = '0') ELSE '1';
 	
 END Behavioral;
 

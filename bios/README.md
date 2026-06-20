@@ -2,13 +2,13 @@
 
 Minimal BIOS for M8SBC-486 that is capable of booting various operating systems such as MS-DOS, FreeDOS or Linux. 
 
-Current version: A2.01
+Current version: A2.02
 
-See docs/ for more technical information.
+See docs/ for more technical information and release history.
 
 ## Building
 
-Requirements: `make`, `nasm`, `dd`, `i686-linux-gnu-gcc`, `python3` (with Pillow installed)
+Requirements: `make`, `nasm`, `dd`, `i686-linux-gnu-gcc`, `python3` (with Pillow installed, required for boot logo)
 
 To build, clone repository and run `make` in this directory. Ready to flash image will be at `out/m8sbc_flash.bin`
 
@@ -20,6 +20,8 @@ To build, clone repository and run `make` in this directory. Ready to flash imag
 - BIOS setup
 - Extended memory test
 - Compatibility fixes
+- POST codes (see docs/)
+- More complete keyboard implementation
 
 ## Issues / TODOs
 
