@@ -319,9 +319,9 @@ void timer1_start(uint16_t value) {
     TCNT1 = 0;
 
     // Clear Job Done flag
-    TIFR |= (1 << OCF1A);
+    TIFR = (1 << OCF1A);
     // Clear Timer on Compare Match and set prescaler to 256
-    TCCR1B |= (1 << WGM12) | (1 < CS12);
+    TCCR1B = (1 << WGM12) | (1 << CS12);
 }
 uint8_t timer1_is_done(void) {
     // Check is timer1 done
