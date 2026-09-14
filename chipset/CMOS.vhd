@@ -416,7 +416,7 @@ BEGIN
 								IF RECEIVED_CONFIG = '1' THEN
 									DATA_OUT_FINAL := RAM_OUT;
 								ELSE
-									DATA_OUT_FINAL := x"FF";
+									DATA_OUT_FINAL := x"00";
 								END IF;
 							ELSE
 								DATA_OUT_FINAL := x"00";

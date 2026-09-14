@@ -117,7 +117,7 @@ ARCHITECTURE Behavioral OF m8sbc_main IS
 	-- CONSTANTS
 	-- Update Divider in CLKGEN!
 	
-	CONSTANT FPGA_VER						: STD_LOGIC_VECTOR(31 DOWNTO 0) := x"48860003"; -- first 2 bytes - chipset ident, last 2 bytes - version
+	CONSTANT FPGA_VER						: STD_LOGIC_VECTOR(31 DOWNTO 0) := x"48860004"; -- first 2 bytes - chipset ident, last 2 bytes - version
 	
 	
 	CONSTANT REVERSE_CLOCK				: STD_LOGIC	:= '0'; -- Use 1 for 12 MHz, for 16> use 0

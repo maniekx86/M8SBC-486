@@ -8,7 +8,7 @@
 -- Project Name: 
 -- Target Devices: 
 -- Tool versions: 
--- Description: "Enough" 8042 recreation
+-- Description: "Sufficient" recreation of the 8042
 --
 -- Dependencies: 
 --
@@ -140,16 +140,6 @@ ARCHITECTURE Behavioral OF KBC_8042 IS
 		16#49# => X"34", -- .
 		16#4A# => X"35", -- /
 		
-		-- ps/2 control bytes (simple pass fix)
-		16#FA# => X"FA", -- ACK
-		16#FE# => X"FE", -- Resend
-		16#AA# => X"AA", -- BAT Passed
-		16#EE# => X"EE", -- Echo
-		16#00# => X"00", -- Error/Overrun
-		16#FF# => X"FF", -- Error/Overrun
-		16#FC# => X"FC", -- BAT Failed
-		16#FD# => X"FD", -- BAT Failed
-		
 		-- Device ID Byte 1 (Byte 2 is 0x83, which naturally translates to 0x41)
 		16#AB# => X"AB",
 
@@ -192,7 +182,7 @@ ARCHITECTURE Behavioral OF KBC_8042 IS
 	CONSTANT cmd_write_controller_o_port	: STD_LOGIC_VECTOR(7 DOWNTO 0) := X"D1";
 	CONSTANT cmd_pulse_reset					: STD_LOGIC_VECTOR(7 DOWNTO 0) := X"FE";
 	
-	CONSTANT ps2_receive_timeout				: INTEGER := 5000; -- 5000 is about 4-5 ms
+	CONSTANT ps2_receive_timeout				: INTEGER := 20000; -- 20000 is about 20-25 ms
 	CONSTANT ps2_reset_pulse_duration		: INTEGER := 6000; -- 5-6 ms
 	CONSTANT ps2_send_clk_waiting_duration	: INTEGER := 120;  -- about 100 uS
 	CONSTANT ps2_send_clk_waiting_dat_rel	: INTEGER := 60;   -- DAT release timing (must be lower than above)
@@ -415,10 +405,9 @@ BEGIN
 				ELSIF CS_n = '0' AND RD_n = '0' AND A2 = '0' AND status_obf = '1' THEN -- last case: do not trigger last_rd if there's no data in buffer
 					last_rd <= '1';
 				ELSE
-					IF last_rd = '1' THEN -- clear when read ended
+					IF last_rd = '1' THEN -- clear when read ended, but keep host_read_buf because its a latch
 						last_rd <= '0';
 						status_obf <= '0';
-						host_read_buf <= X"00";
 						last_rd_clear_ok <= '1';
 					END IF;
 					IF last_rd_clear_ok = '1' AND last_rd = '0' THEN
@@ -442,11 +431,9 @@ BEGIN
 		IF RST_n = '1' THEN -- reset not asserted
 			IF CS_n = '0' AND RD_n = '0' AND WR_n = '1' THEN
 				IF A2 = '0' THEN -- CPU READ 0x60 (Data read)
-					IF status_obf = '1' THEN
-						DATA_OUT_v := host_read_buf;
-					ELSE
-						DATA_OUT_v := X"00";
-					END IF;
+					DATA_OUT_v := host_read_buf; -- 8042 must hold output value until its overwritten!
+					-- Returning the last byte even when OBF=0 is important for TSRs (like EDIT from newer MS-DOS) 
+					-- that hook to INT 09h and read port 60h after BIOS reads it (clearing OBF)
 				ELSE -- CPU READ 0x64 (Status)
 					DATA_OUT_v := status_perr & status_terr & "01" & status_cd & status_sysf & status_ibf & status_obf; -- bit 4 = 1 (Keyboard lock, 1 means unlocked)
 				END IF;
@@ -678,6 +665,7 @@ BEGIN
 						
 							WHEN WRITE_PS2 => -- BEGIN TRANSMISSION TO PS/2
 								
+								ps2_cfg_port_clock <= '0'; -- enable port on write (8042 behavior)
 								PS2_CLK_OUT_buf <= '0'; -- pull clock low
 								PS2_DAT_OUT_buf <= '1'; -- data high
 								ps2_send_clk_waiting	<= '1'; -- We are waiting 100 uS
@@ -765,7 +753,14 @@ BEGIN
 												
 											ELSE
 												
-												IF ps2_translation_ext = '1' THEN -- Ext or normal
+												IF ps2_receive_data = X"FA" OR ps2_receive_data = X"FE" OR
+													ps2_receive_data = X"AA" OR ps2_receive_data = X"EE" OR
+													ps2_receive_data = X"00" OR ps2_receive_data = X"FF" OR
+													ps2_receive_data = X"FC" OR ps2_receive_data = X"FD" THEN
+													
+													translated_data_v := ps2_receive_data; -- Pass control bytes directly
+												
+												ELSIF ps2_translation_ext = '1' THEN -- Ext or normal
 													translated_data_v := SET2_TO_SET1_EXT(to_integer(unsigned(ps2_receive_data)));
 												ELSE
 													translated_data_v := SET2_TO_SET1(to_integer(unsigned(ps2_receive_data)));
@@ -808,9 +803,9 @@ BEGIN
 								END IF; -- ps2_bit_count = 9
 								
 								ps2_bit_count <= ps2_bit_count + 1;
-								ps2_timeout_cnt <= ps2_timeout_cnt + 1;
-							ELSE
 								ps2_timeout_cnt <= 0; -- reset timeout on pulse
+							ELSE
+								ps2_timeout_cnt <= ps2_timeout_cnt + 1; -- increment while waiting
 							END IF; -- falling edge PS2_CLK_IN_2 = '0' AND PS2_CLK_IN_3 = '1'
 							
 							
@@ -818,6 +813,10 @@ BEGIN
 						
 					WHEN ST_PS2_SEND =>
 						-- ps2_cmd_buf contains byte to send
+						
+						IF pass_to_ps2_cmd_av_2 = '0' THEN
+							pass_to_ps2_cmd_cl <= '0'; -- Clear IBF early so host can write next byte while we send
+						END IF;
 						
 						IF ps2_timeout_cnt >= ps2_receive_timeout THEN
 							-- timeout
