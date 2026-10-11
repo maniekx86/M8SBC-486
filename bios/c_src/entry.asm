@@ -66,7 +66,7 @@ protected_mode_start:
     mov fs, ax
     mov gs, ax
     mov ss, ax
-    mov esp, 0x900 ; ASM stack is at 0x1000
+    mov esp, 0xB00 ; ASM stack is at 0x1000
 
     ; 5. Copy Data (ROM -> RAM)
     mov esi, _data_load_addr

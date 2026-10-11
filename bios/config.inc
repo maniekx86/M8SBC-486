@@ -1,15 +1,7 @@
 
-; Extended RAM size in KB
-%define EXT_RAM_SIZE		3072
+; Continuous 1KB blocks after 1MB
+; In case of M8SBC-486 - it's 3072 (0x100000-0x400000)
+%define EXT_RAM_SIZE_CONT 3072
 
-
-; HDD cylinder count
-; HDD size: HDD_CYLINDERS * 16 * 63 * 512 bytes
-%define HDD_CYLINDERS		511
-%define HDD_HEADS		16
-%define HDD_SECTORS		63
-
-; Set to 1 if you don't need cga glyphs
-; This will save 1 KB of ROM
-%define NO_CGA_GLYPHS		0
-
+; Where in binary is C code entry located
+%define C_CODE_ENTRY 0x4000

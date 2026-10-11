@@ -17,18 +17,20 @@
 
 #define POST(x) outb(0x80, x)
 
-volatile uint32_t *cpuid_edx = (uint32_t*)0x5F0;  // DX from reset is stored to 0x5F0 by ASM
-// volatile uint16_t *bda_warm_boot = (uint16_t*)0x472; // Warm boot flag. If set to 0x1234, skip some checks. Needs fixes in real mode asm, so TODO
+volatile uint32_t *cpuid_edx = (volatile uint32_t*)0x5F0;  // DX from reset is stored to 0x5F0 by ASM
+volatile uint8_t *num_hdd_ptr = (volatile uint8_t *)0x475; // BDA HDD count
+// volatile uint16_t *bda_warm_boot = (volatile uint16_t*)0x472; // Warm boot flag. If set to 0x1234, skip some checks. Needs fixes in real mode asm, so TODO
 
 // Global variables
-uint16_t cpuid;
+volatile uint32_t cpuid;
 int cyrix_cpu = 0;
 char cpu_model[48];
 int fpu_present = 0;
 
 int mem_total = 64;             // base 64K already tested
 int ide_detected = 0;
-char ide_name[48];
+char ide_master_name[48];
+char ide_slave_name[48];
 int skip_memory_test = 0;
 uint8_t cmos_status;
 
@@ -214,7 +216,7 @@ void POST_kb_handle() {
 
 void main() {
     // Interrupts are disabled
-    POST(0x80); // 80 - C main() running. IDT init
+    POST(0x80); // 80 - C main() running. PIC (IDT) init
     
     idt_init(); // Remaps and masks all IRQ internally ( pic_remap(0x20); pic_set_mask(0xFF); )
     
@@ -226,7 +228,7 @@ void main() {
     fpu_present = is_fpu_present();
     cyrix_cpu = is_cyrix_cpu();
 
-    cpuid = (uint16_t)(*cpuid_edx & 0xFFFF);
+    cpuid = *cpuid_edx;
     detect_486_model(cpuid, cyrix_cpu, cpu_model, 0);
 
     POST(0x83); // 83 - PIT setup and test
@@ -320,24 +322,77 @@ void main() {
 
     memory_test(cmos_get(CMOS_QUICK_MEMTEST));
     
-    POST(0x88); // 88 - Primary IDE detection
+    POST(0x88); // 88 - Master IDE detection
 
-    vga_print_string("Primary IDE : detecting...", 6, 12, 0x07);
+    vga_print_string("Master IDE  : detecting...", 6, 12, 0x07);
 
     IDE_reset();
 
-    if(IDE_wait_busy(500) && IDE_detect(ide_name)) { // wait 5 seconds
-        ide_name[42] = 0;
-        ide_detected = 1;
-        vga_print_string("              ", 20, 12, 0x0F);
-        vga_print_string(ide_name, 20, 12, 0x0F);
+    uint16_t p_cyls;
+    uint8_t p_heads, p_secs, p_lba_sup;
+    uint32_t p_lba_cap;
+    uint8_t master_detected = 0;
+    uint8_t hdd_count = 0;
+    
+    ide_detected = 0;
+
+    // Master
+    if(cmos_get(CMOS_HDD_MASTER_DISABLE) == 1) {
+        vga_print_string("Skipped     ", 20, 12, 0x07);
+        strcpy(ide_master_name, "Skipped");
     } else {
-        vga_print_string("None          ", 20, 12, 0x0F);
-        strcpy(ide_name, "None");
-        ide_detected = 0;
+        if(IDE_wait_busy(500) && IDE_detect(0, ide_master_name, &p_cyls, &p_heads, &p_secs, &p_lba_sup, &p_lba_cap)) {
+            ide_master_name[42] = 0;
+            ide_detected = 1;
+            master_detected = 1;
+            hdd_count++;
+            IDE_set_drive_bda(0, p_cyls, p_heads, p_secs, p_lba_sup, p_lba_cap);
+            
+            // Master
+            vga_print_string("              ", 20, 12, 0x0F);
+            vga_print_string(ide_master_name, 20, 12, 0x0F);
+        } else {
+            vga_print_string("None          ", 20, 12, 0x0F);
+            strcpy(ide_master_name, "None");
+        }
     }
     
-    POST(0x89); // 89 - POST display wait
+    POST(0x89); // 89 - Slave IDE detection
+
+    // Slave
+    vga_print_string("Slave IDE   : detecting...", 6, 13, 0x07);
+    if(cmos_get(CMOS_HDD_SLAVE_DISABLE) == 1) {
+        vga_print_string("Skipped     ", 20, 13, 0x07);
+        strcpy(ide_slave_name, "Skipped");
+    } else {
+        if(IDE_wait_busy(500) && IDE_detect(1, ide_slave_name, &p_cyls, &p_heads, &p_secs, &p_lba_sup, &p_lba_cap)) {
+            ide_slave_name[42] = 0;
+            ide_detected = 1;
+            hdd_count++;
+            IDE_set_drive_bda(1, p_cyls, p_heads, p_secs, p_lba_sup, p_lba_cap);
+            
+            // Slave
+            vga_print_string("              ", 20, 13, 0x0F);
+            vga_print_string(ide_slave_name, 20, 13, 0x0F);
+        } else {
+            vga_print_string("None          ", 20, 13, 0x0F);
+            strcpy(ide_slave_name, "None");
+        }
+    }
+
+
+    *num_hdd_ptr = hdd_count; // drive count
+    
+    // Ensure that present drive is selected for real mode IDE driver ide_wait_ready
+    // to prevent timeout delays when querying a floating bus
+    if (master_detected) {
+        outb(0x1F6, 0xA0);
+    } else if (ide_detected) {
+        outb(0x1F6, 0xB0);
+    }
+    io_wait();
+    
+    POST(0x8A); // 8A - POST display wait
 
     kb_set_callback(NULL);
 
@@ -357,7 +412,7 @@ void main() {
         case POST_SETTINGS:
             POST(0xA1); // A1 - BIOS setup
             boot_delay = irq0_ticks + 10;
-            setup_display(cpuid, cyrix_cpu, mem_total, fpu_present, ide_name, ide_detected);
+            setup_display(cpuid, cyrix_cpu, mem_total, fpu_present, ide_master_name, ide_slave_name, ide_detected);
             break;
 
         default:
@@ -373,40 +428,55 @@ void main() {
         asm volatile("nop");
     }
 
-
     if(cmos_get(CMOS_LOCK_CMOS)) cmos_lock();
     
-    POST(0x8A); // 8A - Restore PIC
+    POST(0x8B); // 8B - Restore PIC
     
+    
+
     cli(); // Reset PIC to default
     pic_remap(8); 
     pic_set_mask(0x00); 
     idt_restore_real_mode();
     
-    POST(0x8B); // 8B - Restore VGA and print summary
+    POST(0x8C); // 8C - Restore VGA and print summary
 
     vga_restore_font();
     vga_clear(0x07);
     
     for(int x=0; x<80; x++) {
         vga_print_char('=', x, 0, 0x07);
-        vga_print_char('=', x, 4, 0x07);
+        vga_print_char('=', x, 5, 0x07);
     }
     vga_print_string(" SeaPig BIOS ", 32, 0, 0x07);
+    
+    uint8_t ide_color_master = 0x07;
+    uint8_t ide_color_slave = 0x07;
+    // Highlight boot drive in the summary 
+    if(cmos_get(CMOS_FIRST_BOOT_DRIVE)) {
+        // 1 means slave
+        ide_color_slave = 0x0F;
+    } else {
+        ide_color_master = 0x0F;
+    }
     
     vga_print_string("Processor", 1, 1, 0x07);
     vga_print_char(':', 13, 1, 0x07); 
     vga_print_string("Memory", 1, 2, 0x07);
     vga_print_char(':', 13, 2, 0x07);
-    vga_print_string("Primary IDE", 1, 3, 0x07);
+    vga_print_string("Master IDE", 1, 3, ide_color_master);
     vga_print_char(':', 13, 3, 0x07);
+    vga_print_string("Slave IDE", 1, 4, ide_color_slave);
+    vga_print_char(':', 13, 4, 0x07);
     
     vga_print_string(cpu_model, 15, 1, 0x07);
     int mem_str_len = vga_print_itoa(mem_total, 15, 2, 0x07, 10, 0);
-    vga_print_string("KB", 16+mem_str_len, 2, 0x07);
-    vga_print_string(ide_name, 15, 3, 0x07);
+    vga_print_string("KB", (mem_str_len + 16), 2, 0x07);
+    vga_print_string(ide_master_name, 15, 3, 0x07); // Let's just highlight description without drive name
+    vga_print_string(ide_slave_name, 15, 4, 0x07);
+
     
-    // OS text should be printed at Y=6
+    // OS text should be printed at Y=7
     
     
     // Cursor gets moved by real mode section

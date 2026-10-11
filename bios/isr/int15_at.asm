@@ -8,15 +8,15 @@ int15:
 	cmp ah, 0x24
 	je int15_a20
 	cmp ah, 0x88
-	je int15_memsize
+	je int15_memsize_0x88
 	cmp ah, 0xC0
 	je int15_getconfig
 	cmp ax, 0xE820
 	je int15_memmap
 	cmp ax, 0xE801
-	je int15_memsize2
+	je int15_memsize_0xE801
 	cmp ah, 0x8A
-	je int15_memsize3
+	je int15_memsize_0x8A
 
 	mov ah, 0x86
 	jmp iret_carry_on
@@ -65,21 +65,21 @@ int15_a20_get_support:
 	clc
 	jmp iret_carry
 
-int15_memsize:
-	mov ax, EXT_RAM_SIZE
+int15_memsize_0x88:
+	mov ax, EXT_RAM_SIZE_CONT
 	clc
 	jmp iret_carry
 
-int15_memsize2:
-	mov ax, EXT_RAM_SIZE
+int15_memsize_0xE801:
+	mov ax, EXT_RAM_SIZE_CONT
 	mov cx, ax
 	xor bx, bx
 	mov dx, bx
 	clc
 	jmp iret_carry
 
-int15_memsize3:
-	mov ax, EXT_RAM_SIZE
+int15_memsize_0x8A:
+	mov ax, EXT_RAM_SIZE_CONT
 	xor dx, dx
 	clc
 	jmp iret_carry
@@ -168,9 +168,9 @@ int15_memmap_0: ; 0x0000000 - 0x009FFFF: available
 	dq 0x000A0000
 	dd 1
 ; 0xA0000 - 0xC8000 ISA space
-int15_memmap_1: ; 0x00C8000 - 0x0100000: reserved
-	dq 0x0000C8000
-	dq 0x000038000
+int15_memmap_1: ; 0x00A0000 - 0x0100000: reserved: ISA, VGA RAM, ROMs
+	dq 0x0000A0000
+	dq 0x000060000
 	dd 2
 int15_memmap_2: ; 0x0100000 - 0x0400000: available
 	dq 0x000100000
@@ -188,12 +188,11 @@ int15_memmap_4: ; 0x04A0000 - 0x0500000: available
 
 int15_system_config:
 	dw 8		; Size
-	db 0xFC		; Computer type (PC)
+	db 0xF8		; 386 or higher CPU
 	db 0x00		; Model
 	db 0x01		; BIOS revision
-	db 0xE0		; Feature information
-	db 0x02		; Feature 2, we could use Micro Channel Implemented bit
-			; to make himem.sys think we are PS/2
+	db 0x20		; Feature information, no second PIC
+	db 0x00     ; Feature 2
 	db 0
 	db 0
 	db 0

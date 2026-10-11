@@ -11,6 +11,6 @@
 #include "cmos.h"
 #include "about.h"
 
-void setup_display(uint16_t cpuid, int is_cyrix, int mem_total, int fpu_present, char *ide_name,  int ide_detected);
+void setup_display(uint16_t cpuid, int is_cyrix, int mem_total, int fpu_present, char *ide_master_name, char *ide_slave_name, int ide_detected);
 
 #endif

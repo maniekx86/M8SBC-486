@@ -20,6 +20,7 @@
 
 void IDE_reset();
 int IDE_wait_busy(int timeout);
-int IDE_detect(char *drive_name);
+int IDE_detect(int drive_index, char *drive_name, uint16_t *cyls, uint8_t *heads, uint8_t *sectors, uint8_t *lba_support, uint32_t *lba_capacity);
+void IDE_set_drive_bda(int drive, uint16_t cyls, uint8_t heads, uint8_t sectors, uint8_t lba_support, uint32_t lba_cap);
 
 #endif

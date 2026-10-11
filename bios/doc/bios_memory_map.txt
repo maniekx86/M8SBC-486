@@ -1,4 +1,4 @@
-M8SBC-486 SeaPig BIOS A2.01 memory map
+M8SBC-486 SeaPig BIOS A2.03 memory map
 
 Memory (normal, M8SBC-486):
 |----------------------------------------| 0x500000
@@ -32,13 +32,13 @@ BIOS ROM:
 |-------------------------------------| 0xFFFF 
 |  Reset vector                       |
 |-------------------------------------| 0xFFF0
-|  Misc (VGA vector)                  |
+|  Misc (VGA, INT 15h vectors)        |
 |-------------------------------------| 0xF000
 |  C code                             |
-|-------------------------------------| 0x2000
-|  Empty                              |
+|-------------------------------------| 0x4000
+|  Padding                            |
 |-------------------------------------| ????? 
-|  BIOS Data                          |
+|  BIOS Data & more entry code        |
 |-------------------------------------| 0x1E6E
 |  CGA Font (1024 bytes)              |
 |-------------------------------------| 0x1A6E
@@ -50,3 +50,12 @@ BIOS ROM:
 |-------------------------------------| 0x00FA
 |  BIOS Data Block template           |
 |-------------------------------------| 0x0000
+
+Important BIOS memory addresses:
+0x05F0 - 0x05F3: Saved EDX after reset (CPUID)
+0x0600 - 0x0601: Real mode saved SP pointer
+0x0602 - 0x0AFF: C stack area (1278 bytes)
+0x0B00 - 0x0FFF: Real mode stack (1280 bytes)
+0x1000 - 0xFFFF: C variables area (about 60 KB)
+
+

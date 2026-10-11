@@ -1,10 +1,23 @@
 #include "setup.h"
 
+/* 
+Adding CMOS option:
+ 1. Register option in the bios_settings_setting enum (below) and CMOS_SETTINGS enum in cmos.h
+ 2. Add its value set/get in cmos.c (modify cmos_get, cmos_set)
+ 3. Add option to list in bios_settings const below and update SETTINGS_AMOUNT
+ 4. Add its drawing code in draw_options() below
+ 5. Add option handling (enter/change/update) in the main loop (fetch -> action -> write)
+*/ 
+
 enum bios_settings_setting {
     OPTION_EMPTY,
     OPTION_QUICK_MEMTEST,
-    OPTION_LBA_REPORTING,
+    OPTION_LBA_SUPPORT,
+    OPTION_LBA_TRANSLATION,
     OPTION_LOCK_CMOS,
+    OPTION_BOOT_DEVICE,
+    OPTION_HDD_MASTER_EN,
+    OPTION_HDD_SLAVE_EN,
     OPTION_OPEN_ABOUT
 };
 
@@ -17,17 +30,21 @@ struct bios_settings_struct {
 
 static int select = 0;
 
-#define SETTINGS_AMOUNT 5
+
+// Note: OPTION_EMPTY can't be used twice in a row, or be first or last
+#define SETTINGS_AMOUNT 9
 static const struct bios_settings_struct bios_settings[SETTINGS_AMOUNT] =
 {
-    {OPTION_QUICK_MEMTEST, "Fast memory test", "This option enables quick memory test which reduces boot time."},
-    {OPTION_LBA_REPORTING, "Enable LBA support reporting", "This option controls LBA support BIOS reporting (INT 13h ax=0x41)."},
+    {OPTION_QUICK_MEMTEST, "Fast memory test", "This option enables quick memory test, which reduces boot time."},
+    {OPTION_HDD_MASTER_EN, "Master HDD enable", "Enable/disable master hard drive detection"},
+    {OPTION_HDD_SLAVE_EN, "Slave HDD enable", "Enable/disable slave hard drive detection"},
+    {OPTION_LBA_SUPPORT, "Enable LBA support reporting", "This option controls LBA support BIOS reporting (INT 13h ax=0x41)."},
+    {OPTION_LBA_TRANSLATION, "Enable LBA translation", "This option enables CHS geometry translation for drives > 504MB."},
+    {OPTION_BOOT_DEVICE, "First boot device", "Select the primary hard drive to boot from. It also swaps drives internally (slave becomes 0x80, master 0x81)"},
     {OPTION_LOCK_CMOS, "Lock CMOS after boot", "Enabling this option locks CMOS 0x40-0x5F NVRAM area after boot."},
     {OPTION_EMPTY, "", ""},
-    {OPTION_OPEN_ABOUT, "Open About", "SeaPig information and acknowledgments."}
+    {OPTION_OPEN_ABOUT, "Open About", "SeaPig BIOS information and acknowledgments."}
 };
-// OPTION_EMPTY cant be used twice in a row, or be first or last
-
 
 static void draw_option_text(const char* text, const char* value, int x, int y, int selected) {
     vga_print_string(text, x, y, 0x70);
@@ -37,7 +54,7 @@ static void draw_option_text(const char* text, const char* value, int x, int y, 
 
 
 static void draw_options() {
-    int y = 12;
+    int y = 13;
     for(int i=0; i<SETTINGS_AMOUNT; i++) {
         const int x = 3;
         int selected = (select == i) ? 1 : 0;
@@ -56,14 +73,34 @@ static void draw_options() {
                 draw_type = DRAW_YES_NO;
                 draw_value[0] = cmos_get(CMOS_QUICK_MEMTEST) ? 1 : 0;
                 break;
-            case OPTION_LBA_REPORTING:
+            case OPTION_LBA_SUPPORT:
                 draw_type = DRAW_YES_NO;
-                draw_value[0] = cmos_get(CMOS_LBA_ENABLED) ? 1 : 0;
+                draw_value[0] = cmos_get(CMOS_LBA_SUPPORT) ? 1 : 0;
+                break;
+            case OPTION_LBA_TRANSLATION:
+                draw_type = DRAW_YES_NO;
+                draw_value[0] = cmos_get(CMOS_LBA_TRANSLATION) ? 1 : 0;
                 break;
             case OPTION_LOCK_CMOS:
                 draw_type = DRAW_YES_NO;
                 draw_value[0] = cmos_get(CMOS_LOCK_CMOS) ? 1 : 0;
                 break;
+            case OPTION_BOOT_DEVICE:
+                draw_type = DRAW_TEXT;
+                strcpy(draw_value, cmos_get(CMOS_FIRST_BOOT_DRIVE) ? "Slave IDE" : "Master IDE");
+                break;
+            // Master/slave HDD enable bits are inverted (1 is disabled) - that's because CMOS reset clears all 
+            // bits in CMOS to 0. The BIOS should have HDDs enabled after CMOS reset
+            // Maybe in future instead of clearing CMOS to zeros, I should just make default preset values?
+            case OPTION_HDD_MASTER_EN:
+                draw_type = DRAW_YES_NO;
+                draw_value[0] = cmos_get(CMOS_HDD_MASTER_DISABLE) ? 0 : 1;
+                break;
+            case OPTION_HDD_SLAVE_EN:
+                draw_type = DRAW_YES_NO;
+                draw_value[0] = cmos_get(CMOS_HDD_SLAVE_DISABLE) ? 0 : 1;
+                break;
+
             case OPTION_OPEN_ABOUT:
                 draw_type = DRAW_OPTION_ONLY;
                 break;
@@ -80,6 +117,9 @@ static void draw_options() {
                 strcpy(draw_value, (draw_value[0] == 1) ? "ON" : "OFF");
                 draw_option_text(bios_settings[i].option_name, draw_value, x, y, selected);
                 break;
+            case DRAW_TEXT:
+                draw_option_text(bios_settings[i].option_name, draw_value, x, y, selected);
+                break;
 
             default:
                 break;
@@ -93,7 +133,8 @@ static uint16_t l_cpuid;
 static int l_is_cyrix;
 static int l_mem_total;
 static int l_fpu_present;
-static char *l_ide_name;
+static char *l_ide_master_name;
+static char *l_ide_slave_name;
 static int l_ide_detected;
 static int l_is_m8sbc;
 static int l_chp_version;
@@ -117,10 +158,10 @@ static void bios_redraw() {
         vga_set_char_attr(0x0F, x, 24);
         vga_print_char('=', x, 23, 0x78);
         vga_print_char('-', x, 2, 0x78);
-        vga_print_char('-', x, 10, 0x78);
+        vga_print_char('-', x, 11, 0x78);
     }
     vga_print_string("System info", 1, 2, 0x78);
-    vga_print_string("Settings", 1, 10, 0x78);
+    vga_print_string("Settings", 1, 11, 0x78);
     
     vga_print_string(" " VERSION " ", 80 - sizeof(" " VERSION " "), 23, 0x78);
     
@@ -129,13 +170,15 @@ static void bios_redraw() {
     vga_print_string("CPU Model", 3, 5, 0x71);
     vga_print_string("FPU available", 3, 6, 0x71);
     vga_print_string("Memory available", 3, 7, 0x71);
-    vga_print_string("Primary IDE", 3, 8, 0x71);
+    vga_print_string("Master IDE", 3, 8, 0x71);
+    vga_print_string("Slave IDE", 3, 9, 0x71);
 
     vga_print_char(':', 33, 4, 0x71);
     vga_print_char(':', 33, 5, 0x71);
     vga_print_char(':', 33, 6, 0x71);
     vga_print_char(':', 33, 7, 0x71);
     vga_print_char(':', 33, 8, 0x71);
+    vga_print_char(':', 33, 9, 0x71);
 
     if(l_is_m8sbc) {
         vga_print_string("M8SBC-486, chipset ver: ", 35, 4, 0x71);
@@ -154,7 +197,8 @@ static void bios_redraw() {
     strcat(print_buffer, " KB");
     vga_print_string(print_buffer, 35, 7, 0x71);
 
-    vga_print_string(l_ide_name, 35, 8, 0x71);
+    vga_print_string(l_ide_master_name, 35, 8, 0x71);
+    vga_print_string(l_ide_slave_name, 35, 9, 0x71);
 
     draw_options();
 
@@ -337,13 +381,14 @@ static void dialog_text(const char* title, const char* text) {
     }
 }
 
-void setup_display(uint16_t cpuid, int is_cyrix, int mem_total, int fpu_present, char *ide_name, int ide_detected) {
+void setup_display(uint16_t cpuid, int is_cyrix, int mem_total, int fpu_present, char *ide_master_name, char *ide_slave_name, int ide_detected) {
     
     l_cpuid = cpuid;
     l_is_cyrix = is_cyrix;
     l_mem_total = mem_total;
     l_fpu_present = fpu_present;
-    l_ide_name = ide_name;
+    l_ide_master_name = ide_master_name;
+    l_ide_slave_name = ide_slave_name;
     l_ide_detected = ide_detected;
 
     l_is_m8sbc = cmos_is_m8sbc();
@@ -353,7 +398,8 @@ void setup_display(uint16_t cpuid, int is_cyrix, int mem_total, int fpu_present,
         l_chp_version = 0;
     }
 
-    l_ide_name[38] = '\0'; // trim too long name
+    l_ide_master_name[38] = '\0'; // trim potential too long names
+    l_ide_slave_name[38] = '\0';
     
 
     bios_redraw();
@@ -388,8 +434,9 @@ void setup_display(uint16_t cpuid, int is_cyrix, int mem_total, int fpu_present,
                 if(scancode==0x1C) { // Enter
                     char option_value[16] = {0}; // old & new
                     enum OPTION_TYPE_ENUM {
-                        OPTION_TYPE_OTHER,
-                        OPTION_TYPE_YESNO
+                        OPTION_TYPE_OTHER, // Custom (like do some action on enter)
+                        OPTION_TYPE_SWAP, // Basically OPTION_TYPE_YESNO but without the dialog
+                        OPTION_TYPE_YESNO 
                     } OPTION_TYPE;
 
                     // Option fetch
@@ -399,14 +446,31 @@ void setup_display(uint16_t cpuid, int is_cyrix, int mem_total, int fpu_present,
                             OPTION_TYPE = OPTION_TYPE_YESNO;
                             option_value[0] = cmos_get(CMOS_QUICK_MEMTEST);
                             break;
-                        case OPTION_LBA_REPORTING:
+                        case OPTION_LBA_SUPPORT:
                             OPTION_TYPE = OPTION_TYPE_YESNO;
-                            option_value[0] = cmos_get(CMOS_LBA_ENABLED);
+                            option_value[0] = cmos_get(CMOS_LBA_SUPPORT);
+                            break;
+                        case OPTION_LBA_TRANSLATION:
+                            OPTION_TYPE = OPTION_TYPE_YESNO;
+                            option_value[0] = cmos_get(CMOS_LBA_TRANSLATION);
                             break;
                         case OPTION_LOCK_CMOS:
                             OPTION_TYPE = OPTION_TYPE_YESNO;
                             option_value[0] = cmos_get(CMOS_LOCK_CMOS);
                             break;
+                        case OPTION_BOOT_DEVICE:
+                            OPTION_TYPE = OPTION_TYPE_SWAP;
+                            option_value[0] = cmos_get(CMOS_FIRST_BOOT_DRIVE);
+                            break;
+                        case OPTION_HDD_MASTER_EN:
+                            OPTION_TYPE = OPTION_TYPE_YESNO;
+                            option_value[0] = !cmos_get(CMOS_HDD_MASTER_DISABLE); // invert
+                            break;
+                        case OPTION_HDD_SLAVE_EN:
+                            OPTION_TYPE = OPTION_TYPE_YESNO;
+                            option_value[0] = !cmos_get(CMOS_HDD_SLAVE_DISABLE); // invert
+                            break;
+
                         case OPTION_OPEN_ABOUT:
                             OPTION_TYPE = OPTION_TYPE_OTHER;
                             break;
@@ -415,14 +479,30 @@ void setup_display(uint16_t cpuid, int is_cyrix, int mem_total, int fpu_present,
                             OPTION_TYPE = OPTION_TYPE_OTHER;
                             break;
                     }
+                    
 
                     // Option change
 
                     if(OPTION_TYPE == OPTION_TYPE_YESNO) {
                         uint8_t old_option_val = option_value[0];
+
                         option_value[0] = dialog_yesno(option_value[0], bios_settings[select].option_name);
+                        
                         if(old_option_val!=option_value[0]) modified = 1;
                     }
+                    
+                    if(OPTION_TYPE == OPTION_TYPE_SWAP) {
+                        uint8_t old_option_val = option_value[0];
+                        
+                        if(option_value[0]) {
+                            option_value[0] = 0;
+                        } else {
+                            option_value[0] = 1;
+                        }
+                         
+                        if(old_option_val!=option_value[0]) modified = 1;
+                    }
+                    
 
                     // Option update / action
 
@@ -430,12 +510,25 @@ void setup_display(uint16_t cpuid, int is_cyrix, int mem_total, int fpu_present,
                         case OPTION_QUICK_MEMTEST:
                             cmos_set(CMOS_QUICK_MEMTEST, option_value[0]);
                             break;
-                        case OPTION_LBA_REPORTING:
-                            cmos_set(CMOS_LBA_ENABLED, option_value[0]);
+                        case OPTION_LBA_SUPPORT:
+                            cmos_set(CMOS_LBA_SUPPORT, option_value[0]);
+                            break;
+                        case OPTION_LBA_TRANSLATION:
+                            cmos_set(CMOS_LBA_TRANSLATION, option_value[0]);
                             break;
                         case OPTION_LOCK_CMOS:
                             cmos_set(CMOS_LOCK_CMOS, option_value[0]);
                             break;
+                        case OPTION_BOOT_DEVICE:
+                            cmos_set(CMOS_FIRST_BOOT_DRIVE, option_value[0]);
+                            break;
+                        case OPTION_HDD_MASTER_EN:
+                            cmos_set(CMOS_HDD_MASTER_DISABLE, !option_value[0]); // invert
+                            break;
+                        case OPTION_HDD_SLAVE_EN:
+                            cmos_set(CMOS_HDD_SLAVE_DISABLE, !option_value[0]); // invert
+                            break;   
+
                         case OPTION_OPEN_ABOUT:
                             about_display();
                             break;

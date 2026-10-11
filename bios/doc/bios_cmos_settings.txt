@@ -1,4 +1,4 @@
-CMOS register map on M8SBC-486 (SeaPig BIOS version A2.01)
+CMOS register map on M8SBC-486 (SeaPig BIOS version A2.03)
 
 I/O Ports:
 0x70 - CMOS index port
@@ -25,15 +25,19 @@ CMOS Registers:
 0xFF - Chipset version lower byte
 
 CMOS settings:
-0x40:
+ 0x40:
 |7|6|5|4|3|2|1|0|
  | | | | | | | \---- Fast RAM test enabled
  | | | | | | \------ Enable LBA support reporting
  | | | | | \-------- Lock CMOS after boot 
- | | | | | 
+ | | | | \---------- First Boot Device (0 = IDE master, 1 = IDE slave)
+ | | | \------------ Enable LBA translation
+ | | \-------------- Disable IDE master detection
+ | \---------------- Disable IDE slave detection
+ |
  \------------------ Unused
- 
+
+
 0x5F:
 CMOS checksum (calculated from 0x40 to 0x5E)
-
 

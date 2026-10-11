@@ -28,19 +28,19 @@ int09:
 	mov ax, 0x40
 	mov ds, ax
 
-	; Get XT char code
-	; FPGA keyboard controller must convert PS/2 or USB code to XT code
+	; Get char code
 	in al, 0x60
 	mov ah, al
 
-	; Tell keyboard controller that we are ready for the next one
-	in al, 0x61
-	or al, 0x80
-	out 0x61, al
-	and al, 0x7F
-	out 0x61, al
-
+	; Call keyboard intercept (INT 15h AH=4Fh)
+	stc
 	mov al, ah
+	mov ah, 0x4F
+	int 0x15
+	jc .intercept_ok
+	jmp int09_done
+.intercept_ok:
+	mov ah, al
 
 	; Extended code
 	cmp ah, 0xE0
@@ -51,7 +51,16 @@ int09:
 .check_e0_state:
 	mov cl, [0x0096]           ; Load the E0 flag into CL
 	mov byte [0x0096], 0       ; and clear it from memory
-    
+
+	; Filter E0-prefixed fake shifts (E0 2A / E0 AA from Print Screen etc.)
+	test cl, 1
+	jz .not_e0_shift
+	cmp ah, 0x2A
+	je int09_done              ; Ignore fake E0 2A
+	cmp ah, 0xAA
+	je int09_done              ; Ignore fake E0 AA
+.not_e0_shift:
+
     ; Test for modifier keys
 	cmp ah, 0x2A
 	je int09_lshift
@@ -216,12 +225,15 @@ ascii_ctrl:
 
 
 int09_ok:
-	; Write char to keyboard buffer
+	; Write char to keyboard buffer (standard BDA-offset addressing)
 	mov si, [keybuf_tail]
-	mov [si + 0x1E], ax
+	mov [si], ax
 	inc si
 	inc si
-	and si, 0x1E
+	cmp si, 0x3E
+	jb .no_wrap_tail
+	mov si, 0x1E
+.no_wrap_tail:
 	mov [keybuf_tail], si
 
 	cmp [keybuf_head], si
@@ -231,7 +243,10 @@ int09_ok:
 	mov si, [keybuf_head]
 	inc si
 	inc si
-	and si, 0x1E
+	cmp si, 0x3E
+	jb .no_wrap_head
+	mov si, 0x1E
+.no_wrap_head:
 	mov [keybuf_head], si
 
 	; TODO: add beep here
@@ -331,27 +346,43 @@ update_leds:
 	; CAPS=Bit 6, NUM=Bit 5, SCRL=Bit 4 and
     ; 8042 expects: CAPS=Bit 2, NUM=Bit 1, SCRL=Bit 0.
 	mov ax, [keyboard_flags]
+	push cx
 	mov cl, 4
 	shr al, cl
 	and al, 0x07             ; AL now contains the exact byte needed for port 60h
 
 	push ax                  ; Save LED byte
 
-	; Wait for keyboard controller input buffer to empty
+	; Wait for keyboard controller input buffer to empty (with timeout)
+	mov cx, 0xFFFF
 .wait1:
 	in al, 0x64
 	test al, 0x02
+	jz .wait1_done
+	dec cx
 	jnz .wait1
+	jmp .led_fail            ; Timeout
+.wait1_done:
 
 	mov al, 0xED             ; LED CMD
 	out 0x60, al
 
+	mov cx, 0xFFFF
 .wait2:
 	in al, 0x64
 	test al, 0x02
+	jz .wait2_done
+	dec cx
 	jnz .wait2
+	jmp .led_fail            ; Timeout
+.wait2_done:
 
 	pop ax                   ; Restore LED byte
 	out 0x60, al             ; Send states
-	
+	pop cx
+	ret
+
+.led_fail:
+	pop ax                   ; Clean up saved LED byte
+	pop cx
 	ret

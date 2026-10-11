@@ -43,7 +43,7 @@ uint8_t cmos_get(enum CMOS_SETTINGS setting) {
             if((cmos_data[0] & 0b00000001) > 0) return 1;
             return 0;
 
-        case CMOS_LBA_ENABLED:
+        case CMOS_LBA_SUPPORT:
             if((cmos_data[0] & 0b00000010) > 0) return 1;
             return 0;
 
@@ -51,6 +51,21 @@ uint8_t cmos_get(enum CMOS_SETTINGS setting) {
             if((cmos_data[0] & 0b00000100) > 0) return 1;
             return 0;
 
+        case CMOS_FIRST_BOOT_DRIVE:
+            if((cmos_data[0] & 0b00001000) > 0) return 1;
+            return 0;
+
+        case CMOS_LBA_TRANSLATION:
+            if((cmos_data[0] & 0b00010000) > 0) return 1;
+            return 0;
+            
+        case CMOS_HDD_MASTER_DISABLE:
+            if((cmos_data[0] & 0b00100000) > 0) return 1;
+            return 0;
+            
+        case CMOS_HDD_SLAVE_DISABLE:
+            if((cmos_data[0] & 0b01000000) > 0) return 1;
+            return 0;
 
         default:
             return 0;
@@ -68,7 +83,7 @@ void cmos_set(enum CMOS_SETTINGS setting, uint8_t value) {
             }
             break;
         
-        case CMOS_LBA_ENABLED:
+        case CMOS_LBA_SUPPORT:
             if(value > 0) {
                 cmos_data[0] |=  0b00000010;
             } else {
@@ -81,6 +96,38 @@ void cmos_set(enum CMOS_SETTINGS setting, uint8_t value) {
                 cmos_data[0] |=  0b00000100;
             } else {
                 cmos_data[0] &= ~0b00000100;
+            }
+            break;
+
+        case CMOS_FIRST_BOOT_DRIVE:
+            if(value > 0) {
+                cmos_data[0] |=  0b00001000;
+            } else {
+                cmos_data[0] &= ~0b00001000;
+            }
+            break;
+
+        case CMOS_LBA_TRANSLATION:
+            if(value > 0) {
+                cmos_data[0] |=  0b00010000;
+            } else {
+                cmos_data[0] &= ~0b00010000;
+            }
+            break;
+            
+        case CMOS_HDD_MASTER_DISABLE:
+            if(value > 0) {
+                cmos_data[0] |=  0b00100000;
+            } else {
+                cmos_data[0] &= ~0b00100000;
+            }
+            break;
+        
+        case CMOS_HDD_SLAVE_DISABLE:
+            if(value > 0) {
+                cmos_data[0] |=  0b01000000;
+            } else {
+                cmos_data[0] &= ~0b01000000;
             }
             break;
 

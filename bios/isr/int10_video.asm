@@ -180,7 +180,6 @@ int10_vga_set_all_palette:
 	push dx
 	push si
 	mov si, dx
-	xor ch, ch
 	mov dx, 0x3C8
 	mov al, bl
 	out dx, al
@@ -272,7 +271,41 @@ cga_palette:
 	mov dx, 0x3D9
 	out dx, al
 
+	; VGA translates CGA palette to 256-color table
+	inc dx
+	in al, dx       ; switch AC to index
+	mov dl, 0xc0
+	or bl, bl
+	jz cga_palette_0
+	mov al, 1       ; cyan-magenta-white
+	out dx, al
+	mov al, 3
+	out dx, al
+	mov al, 2
+	out dx, al
+	mov al, 5
+	out dx, al
+	mov al, 3
+	out dx, al
+	mov al, 7
+	out dx, al
+	jmp cga_palette_done
+cga_palette_0:
+	mov al, 1       ; green-red-yellow
+	out dx, al
+	mov al, 10
+	out dx, al
+	mov al, 2
+	out dx, al
+	mov al, 12
+	out dx, al
+	mov al, 3
+	out dx, al
+	mov al, 14
+	out dx, al
 cga_palette_done:
+	mov al, 0x20
+	out dx, al
 	pop dx
 	pop bx
 	pop ax

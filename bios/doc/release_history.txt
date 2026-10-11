@@ -1,8 +1,22 @@
 M8SBC-486 SeaPig BIOS release history
 
 Current known BIOS issues:
-  - No LBA write support
-  - Compact flash cards get randomly corrupted (unsure if it's a hardware or BIOS issue).
+    - Disk BIOS is limited to 137.4 GB LBA and 8.4 GB CHS
+    - Some compact flash cards don't work
+
+A2.03:
+  Notes:
+    - Requires chipset version 0004 (keyboard controller bug fixes)
+  Changes / fixes:
+    - Lots of bug and compatibility fixes
+    - Disk BIOS rewrite (Fixes: Compact flash cards get randomly corrupted and other disk access problems)
+    - LBA write support (Fixes: No LBA write support)
+    - CHS Translation option - CHS drive accesses allow up to 8.4 GB drive addressing in DOS
+    - Added Slave IDE disk support
+    - Added First boot device option (master/slave IDE). Setting slave as first boot option swaps INT 13h
+    - Base BIOS fixes from upstream (video/CGA)
+    - Keyboard BIOS bug fixes
+
 
 A2.02:
   Notes:

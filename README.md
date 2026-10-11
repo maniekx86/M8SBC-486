@@ -28,13 +28,15 @@ Secondary PIC and DMA are missing, so the compatibility is not full. The missing
 
 The hardware and FPGA are mostly done. BIOS is capable of booting DOS. There are a few issues & bugs, but they are being slowly fixed.
 
-Among the most impressive things the board (as time of writing: 20/06/2026) is capable of:
+Among the most impressive things the board (as time of writing: 11/10/2026) is capable of:
 
 - Running Linux 2.2.26 ([using custom bootloader](https://github.com/maniekx86/linux_m8sbc_boot)) and Linux 4.4.302 (documentation is coming soon)
 
 - Running MS-DOS and FreeDOS: The software compatibility is mixed. Some software hangs the system, throws exceptions, but some run fine. Most notable are: Second Reality demo (no sound), Prince of Persia, Wolfenstein 3D, Fasttracker II (PC speaker works in one mode, LPT DAC works okay), 3DBench 1.0c, CACHECHK. For more software checks and detailed information, see the compatibility table on the [project's website](https://maniek86.xyz/projects/m8sbc_486.php).
 
 - Running DOOM ([FastDOOM](https://github.com/viti95/FastDoom) running on FreeDOS 1.4)
+
+- Running Windows 95 ([win95-intel-inboard-386pc patch](https://github.com/Mike1978uk/win95-intel-inboard-386pc), special thanks to [Mike1978uk](https://github.com/Mike1978uk)) - [see project's website](https://maniek86.xyz/projects/m8sbc_486_win95.php)
 
 ## Hardware diagram
 
@@ -73,6 +75,8 @@ Based on this project: [b-dmitry1/BIOS](https://github.com/b-dmitry1/BIOS)
 ## Disclaimer
 
 This project is essentially my hobby, as I like retro, electronics, digital circuits and low-level programming. I never expected this computer to run DOS in the first place. I consider it pretty much experimental and made to research the workings of older x86 chips. I am pretty sure that this work could be used to build something more robust and stable or even to develop fully custom-made boards for other x86 CPUs. It took me a lot of time, but I don't regret it. There are still many issues, but it's heartwarming that I can get so much existing software to work. And, thanks to everyone for support!
+
+If you want to build and use this board, keep in mind that this is an experimental computer project, not a finished product, so I don't provide any warranty - you're mostly on your own!
 
 ## Acknowledgements
 

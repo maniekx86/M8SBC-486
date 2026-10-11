@@ -1,143 +1,139 @@
-; Disk BIOS
-; TO DO: Slave disk support and floppy?
-
+; Disk BIOS (INT 13h)
+; Supports master (DL=80h) and slave (DL=81h) hard drives
+; Functions: 00-04, 08, 10, 15, 41-43
 %include "drivers/ide.asm"
 
+; swap_dl - Translate DL between 0x80 and 0x81 if Slave is first boot drive
+; In/Out: DL (swapped in-place if CMOS bit 3 is set and DL is 0x80 or 0x81)
+; Preserves all other registers
+swap_dl:
+	cmp dl, 0x80
+	jb .no_swap
+	cmp dl, 0x81
+	ja .no_swap
+	push ax
+	mov al, 0x40
+	out 0x70, al
+	in al, 0x71
+	test al, 0b00001000
+	pop ax
+	jz .no_swap
+	xor dl, 1
+.no_swap:
+	ret
 
 int13:
-	; Set interrupt flag to make MS-DOS work
+	; Set interrupt flag in caller's saved flags so IRET
+	; re-enables interrupts (INT instruction clears IF)
 	push bp
 	mov bp, sp
 	or word [bp+6], 0x0200
 	pop bp
-
 	cld
-
-	cmp ah, 0
-	je int13_reset
-	cmp ah, 1
-	;je int13_get_last_error
-	cmp ah, 2
-	je int13_read
-	cmp ah, 3
-	je int13_write
-
-	cmp ah, 4
-	; je int13_verify
-	cmp ah, 8
+	call swap_dl        ; swap logical to physical drive at entry
+	; Functions that handle drive validation internally
+	; (floppy support, custom checks, etc.)
+	cmp ah, 0x01
+	je int13_get_last_error
+	cmp ah, 0x08
 	je int13_get_params
-	cmp ah, 0x10
-	; je int13_10
 	cmp ah, 0x15
-	; je int13_get_type
-
-	; AH = 41h - Get Extended Drive Parameters
-    cmp ah, 0x41
-    je int13_func41
-    ; AH = 42h - Extended Read Sectors From Drive (LBA)
-    cmp ah, 0x42
-    je int13_func42
-
+	je int13_get_type
+	cmp ah, 0x41
+	je int13_func41
+	; All remaining functions require DL = 0x80 or 0x81
+	cmp dl, 0x80
+	jb int13_not_ready
+	cmp dl, 0x81
+	ja int13_not_ready
+	cmp ah, 0x00
+	je int13_reset
+	cmp ah, 0x02
+	je int13_read
+	cmp ah, 0x03
+	je int13_write
+	cmp ah, 0x04
+	je int13_reset		; verify = success
+	cmp ah, 0x10
+	je int13_reset		; ready = success
+	cmp ah, 0x42
+	je int13_func42
+	cmp ah, 0x43
+	je int13_func43
 	jmp int13_no_command
-
-int13_success:
-	push ax
+;----------------------------------------------------------------------
+; Status/result helpers
+; All paths converge to int13_return which updates BDA and exits
+;----------------------------------------------------------------------
+; Common return: set disk_error in BDA, set CF based on AH
+; In: AH = error code (0 = success)
+; Preserves all other registers
+int13_return:
 	push ds
-	mov ax, 0x40
-	mov ds, ax
-	mov [disk_error], byte 0
+	push bx
+	mov bx, 0x40
+	mov ds, bx
+	mov [disk_error], ah
+	pop bx
 	pop ds
-	pop ax
-	mov ah, 0
+	call swap_dl        ; unswap physical back to logical drive
+	or ah, ah
+	jnz .error
 	clc
 	jmp iret_carry
+.error:
+	stc
+	jmp iret_carry
 
+int13_exit_carry:
+	pushf
+	call swap_dl        ; unswap physical back to logical drive
+	popf
+	jmp iret_carry
+
+int13_success:
+	mov ah, 0
+	jmp int13_return
 int13_not_ready:
-	push ax
-	push ds
-	mov ax, 0x40
-	mov ds, ax
-	mov [disk_error], byte 0xAA
-	pop ds
-	pop ax
 	mov ah, 0xAA
-	stc
-	jmp iret_carry
-
+	jmp int13_return
 int13_no_command:
-	push ax
-	push ds
-	mov ax, 0x40
-	mov ds, ax
-	mov [disk_error], byte 1
-	pop ds
-	pop ax
 	mov ah, 0x01
-	stc
-	jmp iret_carry
-
+	jmp int13_return
 int13_no_drive:
-	push ax
-	push ds
-	mov ax, 0x40
-	mov ds, ax
-	mov [disk_error], byte 15
-	pop ds
-	pop ax
 	mov ah, 15
-	stc
-	jmp iret_carry
-	
+	jmp int13_return
 int13_rw_error:
-	push ax
-	push ds
-	mov ax, 0x40
-	mov ds, ax
-	mov [disk_error], byte 0x04  ; 0x04 = Read/Write Error
-	pop ds
-	pop ax
-	mov ah, 0x04
-	stc
-	jmp iret_carry
-
+	mov ah, 0x04		; sector not found / read error
+	jmp int13_return
+;----------------------------------------------------------------------
+; AH=00h - Reset disk system
+;----------------------------------------------------------------------
 int13_reset:
-	; Reset the drive
-	cmp dl, 0x80
-	jne int13_not_ready
 	jmp int13_success
-
+;----------------------------------------------------------------------
+; AH=01h - Get status of last operation
+; Out: AH = last error code, CF = clear
+;----------------------------------------------------------------------
 int13_get_last_error:
-	; Get last error
-	push bx
-	push ax
 	push ds
+	push ax
 	mov ax, 0x40
 	mov ds, ax
-	mov bl, [disk_error]
-	pop ds
 	pop ax
-	mov ah, bl
-	pop bx
-	iret
-
-; int13_02
-; Disk read
-; In:
-;   AL - number of sectors to read
-;   CH - cylinder
-;   CL - sector
-;   DH - head
-;   DL - drive number
-;   ES:BX - buffer
+	mov ah, [disk_error]
+	pop ds
+	clc
+	jmp int13_exit_carry
+;----------------------------------------------------------------------
+; AH=02h - Read sectors (CHS)
+; In: AL=count, CH=cyl, CL=sect, DH=head, DL=drive, ES:BX=buffer
+;----------------------------------------------------------------------
 int13_read:
-	cmp dl, 0x80
-	jne int13_not_ready
-
 	cmp al, 0
-	jne int13_read_check_al_done
+	jne .check_done
 	mov al, 1
-int13_read_check_al_done:
-
+.check_done:
 	push ax
 	push bx
 	push cx
@@ -149,28 +145,15 @@ int13_read_check_al_done:
 	pop ax
 	jc int13_rw_error
 	jmp int13_success
-
-	jmp int13_not_ready
-
-
-; int13_03
-; Disk write
-; In:
-;   AL - number of sectors to write
-;   CH - cylinder
-;   CL - sector
-;   DH - head
-;   DL - drive number
-;   ES:BX - buffer
+;----------------------------------------------------------------------
+; AH=03h - Write sectors (CHS)
+; In: AL=count, CH=cyl, CL=sect, DH=head, DL=drive, ES:BX=buffer
+;----------------------------------------------------------------------
 int13_write:
-	cmp dl, 0x80
-	jne int13_not_ready
-
 	cmp al, 0
-	jne int13_write_check_al_done
+	jne .check_done
 	mov al, 1
-int13_write_check_al_done:
-
+.check_done:
 	push ax
 	push bx
 	push cx
@@ -182,34 +165,48 @@ int13_write_check_al_done:
 	pop ax
 	jc int13_rw_error
 	jmp int13_success
-
-	jmp int13_not_ready
-
-; int13_04
-; Verify sectors
-; In:
-;   DL - drive number
-int13_verify:
-	cmp dl, 0x80
-	jne int13_not_ready
-	jmp int13_success
-
-; int13_08
-; Get drive parameters
-; In:
-;   DL - drive number
+;----------------------------------------------------------------------
+; AH=04h - Verify sectors (no-op, always succeeds)
+;----------------------------------------------------------------------
+;----------------------------------------------------------------------
+; AH=08h - Get drive parameters
+;----------------------------------------------------------------------
 int13_get_params:
 	cmp dl, 0
 	je int13_08_floppy
 	cmp dl, 0x80
-	jne int13_no_drive
-	mov bl, 41
-	mov dl, 1
-	mov dh, 15
-	mov ch, 255	; cyl
-	mov cl, 255	; sect
+	jb int13_no_drive
+	cmp dl, 0x81
+	ja int13_no_drive
+	push ds
+	push si
+	mov ax, 0x40
+	mov ds, ax
+	mov al, dl
+	and al, 1
+	xor ah, ah
+	mov si, ax
+	add si, si
+	mov ax, [0xC5 + si] ; logical cyls
+	test ax, ax
+	jz .no_drive_pop
+	dec ax              ; max cyls (0-based)
+	mov ch, al          ; CH = low 8 bits of cyl
+	mov cl, ah          ; CL = high 8 bits
+	shl cl, 6           ; CL = high bits in 7:6
+	shr si, 1           ; si = drive index (0 or 1)
+	mov dh, [0xC9 + si] ; dh = logical heads
+	dec dh              ; max head
+	or cl, [0xCB + si]  ; CL |= logical sectors
+	mov dl, [num_hdd]
+	mov bl, 0           ; drive type
+	pop si
+	pop ds
 	jmp int13_success
-
+.no_drive_pop:
+	pop si
+	pop ds
+	jmp int13_no_drive
 int13_08_floppy:
 	mov ax, cs
 	mov es, ax
@@ -221,101 +218,72 @@ int13_08_floppy:
 	mov ch, 79
 	mov cl, 18
 	jmp int13_success
-
-dbt_hdd:
-	db 1, 1, 1, 2, 63, 1, 2, 1, 0xff, 1, 1
-
 dbt_floppy:
 	db 1, 1, 1, 2, 18, 1, 2, 1, 0xff, 1, 1
-
-; int13_10
-; Check if device is ready
-; In:
-;   DL - drive number
-int13_10:
-	cmp dl, 0x80
-	jne int13_not_ready
-	jmp int13_success
-
-; int13_get_type
-; Get drive type
-; In:
-;   DL - drive number
+;----------------------------------------------------------------------
+; AH=15h - Get drive type
+; Out: AH=type (1=floppy, 3=fixed), CX:DX=sector count (fixed only)
+;----------------------------------------------------------------------
 int13_get_type:
 	cmp dl, 0
-	je int13_15_floppy
+	je .floppy
 	cmp dl, 0x80
-	jne int13_no_drive
-	mov ah, 3
-	mov cx, 0x000F ; 504 MB
-	mov dx, 0xC000
-	jmp int13_success
-
-int13_15_floppy:
-	mov ah, 1
-	jmp int13_success
-
-
+	jb int13_no_drive
+	cmp dl, 0x81
+	ja int13_no_drive
+	push bx
+	push ds
+	push si
+	mov ax, 0x40
+	mov ds, ax
+	mov al, dl
+	and al, 1
+	xor ah, ah
+	mov si, ax
+	add si, si
+	mov ax, [0xC5 + si]   ; cyls
+	shr si, 1
+	mov bl, [0xC9 + si]   ; heads
+	xor bh, bh
+	mul bx
+	mov bl, [0xCB + si]   ; sectors
+	mul bx                ; dx:ax = total sectors
+	mov cx, dx
+	mov dx, ax
+	pop si
+	pop ds
+	pop bx
+	mov ah, 3		; fixed disk
+	clc
+	jmp int13_exit_carry
+.floppy:
+	mov ah, 1		; floppy without change detection
+	clc
+	jmp int13_exit_carry
+;----------------------------------------------------------------------
+; AH=41h - Check INT 13h Extensions present
+; Out: AH=21h (version), BX=AA55h, CX=1 (packet access), CF=0
+;----------------------------------------------------------------------
 int13_func41:
-
 	call ide_check_lba
-	jc int13_not_ready      ; unsure if correct in case of missing lba support
-	jmp int13_success
-
+	jc int13_not_ready
+	; AH=21h, BX=AA55h, CX=1 already set by ide_check_lba
+	clc
+	jmp int13_exit_carry
+;----------------------------------------------------------------------
+; AH=42h - Extended Read Sectors (LBA)
+; In: DL=drive, DS:SI=DAP
+;----------------------------------------------------------------------
 int13_func42:
-    cmp dl, 0x80
-	jne int13_not_ready
-	
 	call ide_read_lba
-	
+	jc int13_rw_error
+	jmp int13_success
+;----------------------------------------------------------------------
+; AH=43h - Extended Write Sectors (LBA)
+; In: DL=drive, DS:SI=DAP
+;----------------------------------------------------------------------
+int13_func43:
+	call ide_write_lba
 	jc int13_rw_error
 	jmp int13_success
 
-; int13_calc_lba
-; Convert CHS to LBA
-; In:
-;   AL - number of sectors to read
-;   CH - cylinder
-;   CL - sector
-;   DH - head
-;   DL - drive number
-int13_calc_lba:
-	; lba = (cyl * num_heads + head) * num_sects + sect - 1
-	; lba = (CH * 16 + DH) * 63 + CL
-	; temp = cx;
-	; CX = CH;
-	; CX <<= 4;
-	; DX = DH;
-	; CX += DX;
-	; AX = CX * 63;
-	; CX = temp;
-	; CH = 0;
-	; AX += CX;
-
-	push cx		; temp = CX;
-	xchg cl, ch	; CX = CH;
-
-	shr ch, 1
-	shr ch, 1
-	shr ch, 1
-	shr ch, 1
-	shr ch, 1
-	shr ch, 1
-
-	and cx, 0x3FF
-	shl cx, 1	; CX <<= 4;
-	shl cx, 1
-	shl cx, 1
-	shl cx, 1
-	mov dl, dh      ; DX = DH;
-	xor dh, dh
-	add cx, dx      ; CX += DX;
-	mov ax, 63	
-	mul cx          ; DX:AX = CX * 63;
-	pop cx
-	and cx, 0x3F
-	dec cx
-	add ax, cx	; AX += CL;
-	adc dx, 0       ; DX:AX = lba32
-
-	ret

@@ -34,17 +34,19 @@ keyb_get:                   ; INT 16 AH=00 is blocking
     jmp .wait_for_key
     
 .read_key:
-    cli                     ; ensure buffer isn't accesed while read
+    cli                     ; ensure buffer isn't accessed while read
 	mov ax, [keybuf_tail]
-	xor ax, [keybuf_head]
-	and ax, 0x1E
-	jz keyb_done
+	cmp ax, [keybuf_head]
+	je .wait_for_key        ; race: buffer emptied between check and CLI, retry
 
 	mov di, [keybuf_head]
-	mov ax, [di + 0x1E]
+	mov ax, [di]
 	inc di
 	inc di
-	and di, 0x1E
+	cmp di, 0x3E
+	jb .no_wrap
+	mov di, 0x1E
+.no_wrap:
 	mov [keybuf_head], di
 
 	xor di, di
@@ -54,12 +56,11 @@ keyb_get:                   ; INT 16 AH=00 is blocking
 keyb_peek:
     cli                     ; ensure buffer isn't accesed while read
 	mov ax, [keybuf_tail]
-	xor ax, [keybuf_head]
-	and ax, 0x1E
-	jz keyb_done
+	cmp ax, [keybuf_head]
+	je keyb_done
 
 	mov di, [keybuf_head]
-	mov ax, [di + 0x1E]
+	mov ax, [di]
 
 	xor di, di
 	add di, 1

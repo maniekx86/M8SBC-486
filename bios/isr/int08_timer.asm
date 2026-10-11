@@ -19,7 +19,7 @@ int08:
 	xor ax, ax
 	mov [ticks_low], ax
 	mov [ticks_high], ax
-	mov [new_day], al
+	mov byte [new_day], 1
 
 int08_not_midnight:
 

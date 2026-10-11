@@ -1,7 +1,7 @@
 # Makefile for BIOS build
 # Requirements: nasm, dd, make
 
-VERSION := "A2.02"
+VERSION := "A2.03"
 
 # Tools
 NASM := nasm
@@ -84,8 +84,8 @@ $(IMAGE_64K): $(BIOS_BIN) $(STARTVECTOR_BIN) $(VGAVECTOR_BIN) $(INT15VECTOR_BIN)
 	$(DD) if=$(VGAVECTOR_BIN) of=$@ bs=1 seek=61541 conv=notrunc
 # int15vector.bin 0xF859
 	$(DD) if=$(INT15VECTOR_BIN) of=$@ bs=1 seek=63577 conv=notrunc
-# bios_c_blob.bin, 0x2000
-	$(DD) if=$(BIOS_C_BLOB) of=$@ bs=1 seek=8192 conv=notrunc
+# bios_c_blob.bin, 0x4000
+	$(DD) if=$(BIOS_C_BLOB) of=$@ bs=1 seek=16384 conv=notrunc
 
 # Build M8SBC flash image
 $(M8SBC_FLASH): $(IMAGE_64K) $(EMPTY_256K) | $(OUT_DIR)

@@ -7,8 +7,12 @@
 
 enum CMOS_SETTINGS {
     CMOS_QUICK_MEMTEST,
-    CMOS_LBA_ENABLED,
-    CMOS_LOCK_CMOS
+    CMOS_LBA_SUPPORT,
+    CMOS_LOCK_CMOS,
+    CMOS_FIRST_BOOT_DRIVE,
+    CMOS_LBA_TRANSLATION,
+    CMOS_HDD_MASTER_DISABLE,
+    CMOS_HDD_SLAVE_DISABLE
 };
 
 uint8_t cmos_read(); // returns 0 if checksum was invalid

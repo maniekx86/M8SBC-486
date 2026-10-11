@@ -4,8 +4,8 @@ ENTRY(pm_entry)
 
 SECTIONS
 {
-    /* Code lives at 0xF2000 */
-    . = 0xF2000;
+    /* Code lives at 0xF4000 */
+    . = 0xF4000;
 
     .text : {
         *(.text.entry) /* Put assembly entry first */

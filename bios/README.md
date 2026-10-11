@@ -2,7 +2,7 @@
 
 Minimal BIOS for M8SBC-486 that is capable of booting various operating systems such as MS-DOS, FreeDOS or Linux. 
 
-Current version: A2.02
+Current version: A2.03
 
 See docs/ for more technical information and release history.
 
@@ -15,18 +15,20 @@ To build, clone repository and run `make` in this directory. Ready to flash imag
 ## Improvements
 
 - Fancy POST screen
-- LBA support (read)
-- Hard drive detection
 - BIOS setup
 - Extended memory test
 - Compatibility fixes
-- POST codes (see docs/)
+- Hard drive detection
+- Slave HDD support
+- LBA support
+- CHS translation support
+- POST codes (see doc/)
 - More complete keyboard implementation
 
 ## Issues / TODOs
 
-- No LBA write support
-- Compact flash cards get randomly corrupted (unsure if it's a hardware or BIOS issue).
+- Disk BIOS is limited to 137.4 GB LBA and 8.4 GB CHS
+- Some CompactFlash cards don't work
 
 ## Original README
 

@@ -46,6 +46,70 @@ calc_video_table_column:
 calc_video_table_column_done:
 	ret
 
+load_font:
+	mov dx, 0x3c4
+	mov ax, 0x0100 ; SQ00: reset
+	out dx, ax
+	mov ax, 0x0402 ; SQ02: plane 2
+	out dx, ax
+	mov ax, 0x0704 ; SQ04: disable chain-4
+	out dx, ax
+	mov ax, 0x0300 ; SQ00: end reset
+	out dx, ax
+
+	mov dx, 0x3ce
+	mov ax, 0x0204 ; GC04: plane 2
+	out dx, ax
+	mov ax, 0x0005 ; GC05: disable odd/even
+	out dx, ax
+	mov ax, 0x0006 ; GC06: 0xA0000
+	out dx, ax
+
+	push es
+	push ds
+	mov ax, 0xA000
+	mov es, ax
+	xor di, di
+	mov ax, cs
+	mov ds, ax
+	mov si, cga_font
+	mov cx, 128
+load_font_loop:
+	push cx
+	mov cx, 8
+load_font_loop1:
+	lodsb
+	stosb
+	stosb	   ; Convert 8x8 to 8x16
+	loop load_font_loop1
+	mov cx, 16
+	xor al, al
+	rep stosb  ; Zero next 16 bytes
+	pop cx
+	loop load_font_loop
+	pop ds
+	pop es
+
+	mov dx, 0x3c4
+	mov ax, 0x0100 ; SQ00: reset
+	out dx, ax
+	mov ax, 0x0302 ; SQ02: planes 0 and 1
+	out dx, ax
+	mov ax, 0x0304 ; SQ04: restore odd/even
+	out dx, ax
+	mov ax, 0x0300 ; SQ00: end reset
+	out dx, ax
+
+	mov dx, 0x3ce
+	mov ax, 0x0004 ; GC04: plane 0
+	out dx, ax
+	mov ax, 0x1005 ; GC05: restore odd/even
+	out dx, ax
+	mov ax, 0x0E06 ; GC06: 0xB8000
+	out dx, ax
+
+	ret
+
 ; write_regs
 ; Writes default values from mode tables
 ; In:
@@ -65,9 +129,15 @@ init_vga_regs:
 	call write_regs
 
 	; CRT registers
+	mov dx, 0x3d4
+	mov al, 0x11
+	out dx, al
+	inc dx
+	xor al, al
+	out dx, al	; Remove write protection
+	dec dx
 	mov si, bx
 	add si, crt_table
-	mov dx, 0x3d4
 	mov cx, 25
 	xor al, al
 	call write_regs
@@ -102,6 +172,11 @@ init_vga_regs_ac:
 	inc al
 	loop init_vga_regs_ac
 
+	cmp byte [video_mode], 3
+	jg done_load_font
+	call load_font
+done_load_font:
+
 	; Enable video, 80x25
 	mov dx, 0x3d8
 	mov al, 9
@@ -128,36 +203,10 @@ init_vga_regs_ac:
 
 	ret
 
-colors:
-	db 0, 0, 0
-	db 0, 0, 32
-	db 0, 32, 0
-	db 0, 48, 32
-	db 32, 0, 0
-	db 32, 0, 32
-	db 32, 32, 0
-	db 48, 48, 48
-	db 32, 32, 32
-	db 0, 0, 63
-	db 0, 63, 0
-	db 0, 63, 63
-	db 63, 0, 0
-	db 63, 0, 63
-	db 63, 63, 0
-	db 63, 63, 63
-
-set_video_mode:
-	push ax
-	push bx
-	push cx
-	push dx
-
-	mov [video_mode], al
-
+clear_framebuffer:
+	mov al, [video_mode]
 	test al, 0x80
-	jnz set_video_mode_done_clear_fb
-
-	; Clear framebuffer
+	jnz clear_framebuffer_done
 	mov ax, 0xA000
 	mov es, ax
 	xor di, di
@@ -172,11 +221,36 @@ set_video_mode:
 	cmp byte [video_mode], 3
 	jle fill_7
 	xor ax, ax
-fill_7:	
+fill_7:
 	rep stosw
+clear_framebuffer_done:
+	ret
 
-	mov al, [video_mode]
-set_video_mode_done_clear_fb:
+colors:
+	db 0, 0, 0
+	db 0, 0, 42
+	db 0, 42, 0
+	db 0, 42, 42
+	db 42, 0, 0
+	db 42, 0, 42
+	db 42, 21, 0
+	db 42, 42, 42
+	db 21, 21, 21
+	db 21, 21, 63
+	db 21, 63, 21
+	db 21, 63, 63
+	db 63, 21, 21
+	db 63, 21, 63
+	db 63, 63, 21
+	db 63, 63, 63
+
+set_video_mode:
+	push ax
+	push bx
+	push cx
+	push dx
+
+	mov [video_mode], al
 	and al, 0x7F
 
 
@@ -223,6 +297,12 @@ defaultpalette:
 	inc si
 	out dx, al
 	loop defaultpalette
+
+	call clear_framebuffer
+
+	mov al, [video_mode]
+	and al, 0x7F
+	mov [video_mode], al
 
 	pop dx
 	pop cx

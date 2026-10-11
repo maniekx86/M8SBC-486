@@ -4,9 +4,6 @@
 ; Licensed under the MIT License.
 ;
 ;
-; TODO: 
-; - update POST codes
-; - fix IDE driver
 ;
 
 cpu 486
@@ -53,10 +50,10 @@ start:
 	mov ds, ax
 
 	; EDX contains CPUID, we should save it somewhere
-	; Lets save it at SP - saving it to memory will overwrite it, 
+	; Lets save it at ESP - saving it to memory will overwrite it, 
 	; and stack cant be used right now as memory is untested
 	; We will save it to 0x5F0 after mem test
-	mov sp, dx
+	mov esp, edx
 	
 
 	; Check if this restart is just an exit from protected mode
@@ -116,8 +113,8 @@ normal_restart:
 	mov ds, ax
 
 skip_base_mem_test: ; ds is 0x40 in case of skip
-	mov dx, sp ; CPUID was stored temporary in SP
-	mov ds:[0x1F0], dx ; save CPUID to 0x5F0
+	mov edx, esp ; CPUID was stored temporarily in SP
+	mov ds:[0x1F0], edx ; save CPUID to 0x5F0
 
 	; Setup stack
 	xor ax, ax
@@ -176,20 +173,29 @@ erase_ints2:
 	mov [0x1A * 4], word int1a
 	mov [0x1D * 4], word video_init_table
 	mov [0x1E * 4], word int1e
-	mov [0x41 * 4], word int41
+	mov [0x41 * 4], word fdpt_0 - bios_data ; fixed disk parameter table
+	mov [0x41 * 4 + 2], word 0x0040
+	mov [0x46 * 4], word fdpt_1 - bios_data
+	mov [0x46 * 4 + 2], word 0x0040
 
 	; Set CGA glyph table address
 	mov [0x43 * 4 + 2], word 0xF000
 	mov [0x43 * 4], word 0xFA6E
 
-	; Copy BIOS data
+	; Zero BDA (0x400-0x4FF)
 	mov ax, 0x0000
 	mov es, ax
 	mov di, 0x400
+	xor ax, ax
+	mov cx, 0x0080
+	rep stosw
+
+	; Copy BIOS data
 	mov ax, cs
 	mov ds, ax
 	mov si, bios_data
-	mov cx, 0x100 + bios_data_end - bios_data + 1
+	mov di, 0x400
+	mov cx, bios_data_end - bios_data
 	rep movsb
 	
 	mov al, 0x05 ; POST 05 - Option ROM detection and execution
@@ -248,7 +254,7 @@ no_rom:
     ; - init C
     ; - execute main()
     ; - restore real mode and return here
-	call 0xF000:0x2000 
+	call 0xF000:C_CODE_ENTRY
     
     mov al, 0x09 ; POST 09 - C execution done, Real mode PIT init
     out 0x80, al
@@ -258,11 +264,11 @@ no_rom:
 	mov ch, 0x0E    ; Start Scan Line 
 	mov cl, 0x0F    ; End Scan 
 	int 0x10
-    ; Move cursor to 0,6
+    ; Move cursor to 0,7
     mov ah, 0x02
     mov bh, 0x00
     mov dl, 0
-    mov dh, 6
+    mov dh, 7
     int 0x10
 
 	; Timer 1: 15 us / 0x12
@@ -300,55 +306,47 @@ no_rom:
     mov al, 0x0A ; POST 0A - Read boot sector
 	out 0x80, al
 
-	mov ax, 0x0000
-	mov es, ax
-
-	; If we reached this point -> we have disk and can boot now
-	mov si, msg_bootsector
-	call putsv
-
-	; Load a very first sector from default boot drive
-    ; Note: maybe this should be moved to C code and from there checked if the drive is bootable(?)
-	xor ax, ax
-	mov es, ax
-	mov bx, 0x7C00
-	mov ax, 0x201
-	mov dx, 0x80 ; boot drive
-	mov cx, 1
-	int 0x13
-    
 	xor ax, ax
 	mov es, ax
 	mov ds, ax
 
-	; Display on screen first bytes and boot signature of the received data
-	; If all ok you will see something like FA33C08E...55AA on screen
-	; and in the debug console
-	mov si, 0x7C00
-	lodsb
+	mov dx, 0x0080
+	mov si, 2 ; max 2 attempts
+.try_boot:
+	mov bx, 0x7C00
+	mov ax, 0x0201
+	mov cx, 1
+	push dx
+	push si
+	int 0x13
+	pop si
+	pop dx
+	jc .boot_fail
 
-	call print_hexv
-	lodsb
-	call print_hexv
-	lodsb
-	call print_hexv
-	lodsb
-	call print_hexv
-	mov al, '.'
-	call putchv
-	mov al, '.'
-	call putchv
-	mov al, '.'
-	call putchv
-	mov si, 0x7DFE
-	lodsb
-	call print_hexv
-	lodsb
-	call print_hexv
+	; Check signature
+	cmp word [0x7DFE], 0xAA55
+	je .boot_ok
 
-	mov si, msg_crlf
-	call putsv
-    
+.boot_fail:
+	xor dl, 1
+	dec si
+	jnz .try_boot
+
+	; Both failed! Halt system
+.halt:
+	mov ah, 0x0E
+	mov al, 'E'
+	mov bx, 0x0007
+	int 0x10
+	mov al, 'R'
+	int 0x10
+	mov al, 'R'
+	int 0x10
+	cli
+	hlt
+	jmp .halt
+
+.boot_ok:
     mov al, 0x0B ; POST 0B - Enable interrupts leaving
 	out 0x80, al
 
@@ -357,15 +355,23 @@ no_rom:
 	out 0x20, al
 	sti
     
-    mov al, 0x0B ; POST 0C - Start OS
+    mov al, 0x0C ; POST 0C - Start OS
 	out 0x80, al
 
+	; Clear keyboard buffer to drop stray keys (e.g. Ctrl/Alt release during POST)
+	mov ax, 0x40
+	mov ds, ax
+	mov ax, 0x1E
+	mov [0x1A], ax
+	mov [0x1C], ax
 
 	; Set general register default values
 	xor ax, ax
+	mov ds, ax
+	mov es, ax
 	xor bx, bx
 	xor cx, cx
-	mov dx, 0x80	; Boot drive code should be in DL
+	; Boot drive code should be in DL (already is)
 	xor si, si
 	xor di, di
 	xor bp, bp
@@ -428,7 +434,6 @@ empty_int:
 %include "isr/int10_video.asm"
 %include "isr/int11.asm"
 %include "isr/int12.asm"
-%include "isr/int13_disk.asm"
 %include "isr/int14_comm.asm"
 %include "isr/int15_at.asm"
 %include "isr/int16_keyboard.asm"
@@ -437,29 +442,13 @@ empty_int:
 %include "isr/int1a_rtc.asm"
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Extra
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-%include "console.asm"
-%include "drivers/pcspk.asm"
-%include "drivers/cache.asm"
 
-; BIOS messages
-msg_reset:
-	db "x86 embedded BIOS R3", 13, 10, "github.com/b-dmitry1/BIOS", 13, 10, 0
 
-msg_ok:
-	db "OK", 13, 10, 0
-
-msg_crlf:
-	db 13, 10, 0
-
-msg_bootsector:
-	db "Boot sector: ", 0
-
-msg_failed:
-	db 'failed', 0
+; CGA 8x8 font
+; Do not move! Need to be placed in 0x1A6E
+	times 0x1A6E - $ + image_start db 0x90
+	%include "data/cgafont.asm"
 
 ; Tables
 int1e:
@@ -515,46 +504,22 @@ abRegsMono:
 	; abModeCodes (port 3d8 values for each mode)
 	db 0x0c, 0x08, 0x02, 0x09, 0x0a, 0x0e, 0x1a, 0x00 
 
-
-
-; CGA 8x8 font
-; Do not move! Need to be placed in 0x1A6E
-	times 0x1A6E - $ + image_start db 0x90
-	%include "data/cgafont.asm"
-
-
-int41:
-	; Hard disk parameter table
-	; Hard-coded to save space
-	; 203 * 16 * 63 * 512 = 104767488 bytes = 99.9 MB
-hdd_cyls:
-	dw HDD_CYLINDERS - 1	; Number of cyls minus 1
-hdd_heads:
-	db HDD_HEADS - 1	; Number of heads minus 1
-	dw 0                    ; Starting reduced-write current cylinder
-	dw 0                    ; Starting write precompensation cylinder
-	db 0                    ; Maximum ECC data burst length
-	db 0xC0                 ; Disable retries (bit 7), Disable ECC (bit 6)
-	db 0                    ; Standard timeout value
-	db 0                    ; Timeout value for format drive
-	db 0                    ; Timeout value for check drive
-	dw 0                    ; Reserved
-hdd_sectors:
-	db HDD_SECTORS		; Sectors per track
-	db 0
-
-	; Check BIOS parameter block alignment
+; Check BIOS parameter block alignment
 %if ((check_size - bios_data) != 0xA8)
 %error BIOS parameter block data offset detected!
 %endif
 
-; moved to startvector.asm
-; 	; Fill unused area with NOPs
-; 	times 8192 - 16 - $ + image_start db 0x90
+%include "isr/int13_disk.asm"
+%include "drivers/pcspk.asm"
+%include "drivers/cache.asm"
 
-; bootentry:
-; 	jmp (0F000h):start
-; 	db	"08/29/87"
-; 	db	0x00
-; 	db	0xFC		; Machine type (XT)
-; 	db	0x55		; Checksum
+; Left in source as thanks
+msg_reset:
+	db "x86 embedded BIOS R3, github.com/b-dmitry1/BIOS", 0
+
+
+; Fill unused area with 0xFF
+; This should warn about negative offset if we run out of space
+times 16384 - $ + image_start db 0xFF
+
+

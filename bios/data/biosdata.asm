@@ -2,7 +2,8 @@
 
 bios_data:
 	dw 0x3F8, 0x2F8, 0x3E8, 0x2E8	; 0x00 - COM port numbers
-	dw 0x378, 0x278, 0, 0		; 0x08 - LPT port numbers
+	dw 0x378, 0x278, 0		; 0x08 - LPT1-LPT3
+	dw 0x0000		; 0x0E - EBDA segment (none)
 
 bios_equip:
 	dw 0x082D		; 0x10 - equipment
@@ -17,9 +18,9 @@ keyboard_flags:
 	dw 0			; 0x17 - keyboard flags
 	db 0			; 0x19 - Alt+charcode buffer
 keybuf_head:
-	dw 0			; 0x1A - keyboard buffer start
+	dw 0x1E			; 0x1A - keyboard buffer head (offset into seg 0x40)
 keybuf_tail:
-	dw 0			; 0x1C - keyboard buffer end
+	dw 0x1E			; 0x1C - keyboard buffer tail (offset into seg 0x40)
 keybuf:
 	times 16 dw 0		; 0x1E - keyboard buffer
 
@@ -183,5 +184,19 @@ video_attr:
 
 bios_temp:
 	dw 0, 0			; temporary data buffer
+
+; Dynamic HDD Parameters (filled by C code)
+hdd_lba_supported:
+	db 0, 0			; 1 byte per drive (0=Master, 1=Slave)
+hdd_logical_cyls:
+	dw 0, 0			; 2 bytes per drive
+hdd_logical_heads:
+	db 0, 0			; 1 byte per drive
+hdd_logical_sectors:
+	db 0, 0			; 1 byte per drive
+fdpt_0:
+	times 16 db 0		; INT 41h points here
+fdpt_1:
+	times 16 db 0		; INT 46h points here
 
 bios_data_end:

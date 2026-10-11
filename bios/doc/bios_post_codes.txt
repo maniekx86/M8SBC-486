@@ -1,4 +1,4 @@
-M8SBC-486 SeaPig BIOS A2.01 POST codes
+M8SBC-486 SeaPig BIOS A2.03 POST codes
 
 | 01 | BIOS execution start
 | 02 | Initial PIC setup
@@ -8,11 +8,7 @@ M8SBC-486 SeaPig BIOS A2.01 POST codes
 | 06 | VGA init
 | 07 | L1 Cache enable
 | 08 | C entry
-| 09 | C execution done, Real mode PIT init
-| 0A | Read boot sector
-| 0B | Enable interrupts leaving
-| 0C | Start OS
-| 80 | C main() running. IDT init
+| 80 | C main() running. PIC (IDT) init
 | 81 | CMOS read
 | 82 | CPU identification
 | 83 | PIT setup and test
@@ -20,10 +16,16 @@ M8SBC-486 SeaPig BIOS A2.01 POST codes
 | 85 | BIOS POST display init
 | 86 | BIOS POST display
 | 87 | Extended memory test
-| 88 | Primary IDE detection
-| 89 | POST display wait
-| 8A | Restore PIC
-| 8B | Restore VGA and print summary
+| 88 | Master IDE detection
+| 89 | Slave IDE detection
+| 8A | POST display wait
+| 8B | Restore PIC
+| 8C | Restore VGA and print summary
+| 09 | C execution done, Real mode PIT init
+| 0A | Read boot sector
+| 0B | Enable interrupts leaving
+| 0C | Start OS
+|----|
 | A0 | About display
 | A1 | BIOS setup
 | E0 | Base 64K memory test failed
